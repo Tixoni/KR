@@ -16,6 +16,53 @@ services:
     networks:
       - tourism_network
 
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: tourism_auth_service
+    environment:
+      # секрет должен совпадать у всех сервисов, кто валидирует токены
+      SECRET_KEY: "super-secret"
+      JWT_ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      # внутри сети compose используем хост postgres
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - tourism_network
+
+  tours-service:
+    build:
+      context: ./tours-service
+      dockerfile: Dockerfile
+    container_name: tourism_tours_service
+    environment:
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres
+    networks:
+      - tourism_network
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: tourism_booking_service
+    environment:
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+    networks:
+      - tourism_network
+
 volumes:
   postgres_data:
 
