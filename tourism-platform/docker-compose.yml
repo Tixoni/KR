@@ -42,6 +42,8 @@ services:
     container_name: tourism_tours_service
     environment:
       DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
+      SECRET_KEY: "super-secret"
+      JWT_ALGORITHM: "HS256"
     ports:
       - "8001:8001"
     depends_on:
@@ -56,10 +58,30 @@ services:
     container_name: tourism_booking_service
     environment:
       DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
+      SECRET_KEY: "super-secret"
+      JWT_ALGORITHM: "HS256"
+      AUTH_SERVICE_URL: "http://auth-service:8000"
+      TOURS_SERVICE_URL: "http://tours-service:8001"
     ports:
       - "8002:8002"
     depends_on:
       - postgres
+      - auth-service
+      - tours-service
+    networks:
+      - tourism_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tourism_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - tours-service
+      - booking-service
     networks:
       - tourism_network
 

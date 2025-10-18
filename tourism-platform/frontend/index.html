@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tourism Platform</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="container header">
+      <h1>🌍 Tourism Platform</h1>
+      <nav>
+        <a href="#tours" onclick="showSection('tours')">Туры</a>
+        <a href="#bookings" onclick="showSection('bookings')" id="bookings-nav" class="auth-required">Мои бронирования</a>
+        <div class="user-section">
+          <span id="user-display" class="user-info hidden">Привет, <span id="username-display"></span>!</span>
+          <button id="auth-btn" class="auth-btn" onclick="toggleAuthModal()">Войти</button>
+          <button id="logout-btn" class="logout-btn hidden" onclick="logout()">Выйти</button>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section id="section-tours" class="section">
+        <h2>🌴 Наши туры</h2>
+        <div class="controls">
+          <input id="filter-destination" placeholder="🔍 Поиск по направлению..." />
+          <button onclick="loadTours()">Найти туры</button>
+        </div>
+        <div id="tours-list" class="cards"></div>
+        
+        <!-- Форма создания/редактирования тура (только для администраторов) -->
+        <div id="admin-section" class="admin-section hidden">
+          <h3 id="admin-form-title">➕ Создать новый тур</h3>
+          <form id="admin-tour-form" onsubmit="handleTourForm(event)">
+            <input type="hidden" id="tour-id" name="tour_id" />
+            <div class="grid">
+              <input name="title" placeholder="Название тура" required />
+              <input name="destination" placeholder="Направление" required />
+              <input name="price" type="number" step="0.01" placeholder="Цена (₽)" required />
+              <input name="duration_days" type="number" min="1" placeholder="Длительность (дней)" required />
+            </div>
+            <textarea name="description" placeholder="Описание тура"></textarea>
+            <input name="features" placeholder="Особенности (через запятую)" />
+            <div class="form-actions">
+              <button type="submit" id="submit-tour-btn">Создать тур</button>
+              <button type="button" id="cancel-edit-btn" class="cancel-btn hidden" onclick="cancelEditTour()">Отменить</button>
+            </div>
+            <span id="admin-tour-status" class="status"></span>
+          </form>
+        </div>
+      </section>
+
+      <section id="section-bookings" class="section hidden">
+        <h2>📋 Мои бронирования</h2>
+        <div class="controls">
+          <button onclick="loadBookings()">🔄 Обновить</button>
+        </div>
+        <div id="bookings-list" class="cards"></div>
+      </section>
+
+    </main>
+
+    <!-- Модальное окно авторизации -->
+    <div id="auth-modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>🔐 Авторизация</h2>
+          <button class="close-btn" onclick="closeAuthModal()">&times;</button>
+        </div>
+        
+        <div class="auth-tabs">
+          <button class="tab-btn active" onclick="switchAuthTab('login')">Войти</button>
+          <button class="tab-btn" onclick="switchAuthTab('register')">Регистрация</button>
+        </div>
+        
+        <div id="login-tab" class="auth-tab active">
+          <form id="login-form" onsubmit="login(event)">
+            <div class="form-group">
+              <label>👤 Логин</label>
+              <input name="username" placeholder="Введите логин" required />
+            </div>
+            <div class="form-group">
+              <label>🔒 Пароль</label>
+              <input name="password" type="password" placeholder="Введите пароль" required />
+            </div>
+            <button type="submit" class="submit-btn">Войти</button>
+            <span id="login-status" class="status"></span>
+          </form>
+        </div>
+        
+        <div id="register-tab" class="auth-tab">
+          <form id="register-form" onsubmit="registerUser(event)">
+            <div class="form-group">
+              <label>👤 Логин</label>
+              <input name="username" placeholder="Введите логин" required />
+            </div>
+            <div class="form-group">
+              <label>🔒 Пароль</label>
+              <input name="password" type="password" placeholder="Введите пароль" required />
+            </div>
+            <div class="form-group">
+              <label>📧 Email</label>
+              <input name="email" type="email" placeholder="Введите email" required />
+            </div>
+            <div class="form-group">
+              <label>👋 Имя</label>
+              <input name="name" placeholder="Введите имя" required />
+            </div>
+            <div class="form-group">
+              <label>📱 Телефон</label>
+              <input name="phone" placeholder="Введите телефон" />
+            </div>
+            <button type="submit" class="submit-btn">Создать аккаунт</button>
+            <span id="register-status" class="status"></span>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="/script.js"></script>
+  </body>
+  </html>
+
+
