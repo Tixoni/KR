@@ -62,7 +62,13 @@ function authHeader(){
 
 // Функция проверки роли администратора
 function isAdmin() {
-  return currentUser && ADMIN_USERS.includes(currentUser.username);
+  const isAdminUser = currentUser && ADMIN_USERS.includes(currentUser.username);
+  console.log('🔍 Проверка прав администратора:', {
+    currentUser: currentUser?.username,
+    isAdmin: isAdminUser,
+    adminUsers: ADMIN_USERS
+  });
+  return isAdminUser;
 }
 
 function updateAuthState(isAuthenticated) {
@@ -80,9 +86,21 @@ function updateAuthState(isAuthenticated) {
     
     // Показываем секцию администратора только для админов
     if (isAdmin()) {
+      console.log('👑 Показываем секцию администратора');
       adminSection.classList.remove('hidden');
+      // Показываем кнопку создания тура
+      const createButton = document.getElementById('create-tour-button');
+      if (createButton) {
+        createButton.style.display = 'block';
+      }
     } else {
+      console.log('👤 Скрываем секцию администратора');
       adminSection.classList.add('hidden');
+      // Скрываем кнопку создания тура
+      const createButton = document.getElementById('create-tour-button');
+      if (createButton) {
+        createButton.style.display = 'none';
+      }
     }
     
     loadCurrentUser();
@@ -101,9 +119,13 @@ function updateAuthState(isAuthenticated) {
 
 async function loadCurrentUser() {
   try {
+    console.log('👤 Загружаем данные пользователя...');
     const res = await fetch('/api/auth/users/me', { headers: authHeader() });
+    console.log('Response status:', res.status);
+    
     if (res.ok) {
       const userData = await res.json();
+      console.log('Данные пользователя:', userData);
       currentUser = userData;
       const usernameDisplay = document.getElementById('username-display');
       const userDisplay = document.getElementById('user-display');
@@ -115,9 +137,19 @@ async function loadCurrentUser() {
       if (isAdmin()) {
         userDisplay.classList.add('admin');
         adminSection.classList.remove('hidden');
+        // Показываем кнопку создания тура
+        const createButton = document.getElementById('create-tour-button');
+        if (createButton) {
+          createButton.style.display = 'block';
+        }
       } else {
         userDisplay.classList.remove('admin');
         adminSection.classList.add('hidden');
+        // Скрываем кнопку создания тура
+        const createButton = document.getElementById('create-tour-button');
+        if (createButton) {
+          createButton.style.display = 'none';
+        }
       }
       
       // Обновляем туры после загрузки данных пользователя
@@ -144,8 +176,21 @@ async function loadTours(){
     const isAuthenticated = !!getToken();
     const isAdminUser = isAdmin();
     
-  root.innerHTML = data.map(t => (
-    `<div class="card">
+    console.log('🔍 Состояние при загрузке туров:', {
+      isAuthenticated,
+      isAdminUser,
+      currentUser: currentUser?.username,
+      adminUsers: ADMIN_USERS
+    });
+    
+  root.innerHTML = data.map(t => {
+    console.log(`🔍 Обрабатываем тур ${t.id}:`, {
+      title: t.title,
+      isAdminUser,
+      isAuthenticated
+    });
+    
+    return `<div class="card">
         <h4>${escapeHtml(t.title)}</h4>
         <div class="destination">📍 ${escapeHtml(t.destination)}</div>
         ${t.description ? `<div class="description">${escapeHtml(t.description)}</div>` : ''}
@@ -169,8 +214,8 @@ async function loadTours(){
             </div>
           ` : ''}
         </div>
-    </div>`
-  )).join('');
+    </div>`;
+  }).join('');
   } catch (error) {
     console.error('Ошибка загрузки туров:', error);
     document.getElementById('tours-list').innerHTML = `<div class="card error">Ошибка загрузки туров: ${escapeHtml(error.message)}</div>`;
@@ -249,8 +294,11 @@ async function bookTour(tourId) {
 async function handleTourForm(e){
   e.preventDefault();
   try {
+    console.log('🔧 Обработка формы тура...');
   const form = e.target;
     const tourId = document.getElementById('tour-id').value;
+    console.log('Tour ID:', tourId);
+    
   const features = (form.features.value || '').split(',').map(s=>s.trim()).filter(Boolean);
   const payload = {
     title: form.title.value,
@@ -262,9 +310,12 @@ async function handleTourForm(e){
     available: true
   };
     
+    console.log('Payload:', payload);
+    
     let res;
     if (tourId) {
       // Редактирование существующего тура
+      console.log('🔄 Редактирование тура:', tourId);
       res = await fetch(`/api/tours/tours/${tourId}`, { 
         method: 'PUT', 
         headers: {...{'Content-Type': 'application/json'}, ...authHeader()}, 
@@ -272,6 +323,7 @@ async function handleTourForm(e){
       });
     } else {
       // Создание нового тура
+      console.log('➕ Создание нового тура');
       res = await fetch('/api/tours/tours', { 
         method: 'POST', 
         headers: {...{'Content-Type': 'application/json'}, ...authHeader()}, 
@@ -279,8 +331,11 @@ async function handleTourForm(e){
       });
     }
     
+    console.log('Response status:', res.status);
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+      console.error('Ошибка создания тура:', errorData);
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
     
@@ -302,19 +357,24 @@ async function handleTourForm(e){
 // Редактирование тура
 async function editTour(tourId) {
   try {
+    console.log('✏️ Редактирование тура:', tourId);
     const res = await fetch(`/api/tours/tours/${tourId}`, { headers: authHeader() });
+    console.log('Response status:', res.status);
+    
     if (!res.ok) {
-      throw new Error('Тур не найден');
+      const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+      throw new Error(errorData.detail || 'Тур не найден');
     }
     
     const tour = await res.json();
+    console.log('Загруженный тур:', tour);
     
     // Заполняем форму данными тура
     document.getElementById('tour-id').value = tour.id;
-    document.querySelector('input[name="title"]').value = tour.title;
-    document.querySelector('input[name="destination"]').value = tour.destination;
-    document.querySelector('input[name="price"]').value = tour.price;
-    document.querySelector('input[name="duration_days"]').value = tour.duration_days;
+    document.querySelector('input[name="title"]').value = tour.title || '';
+    document.querySelector('input[name="destination"]').value = tour.destination || '';
+    document.querySelector('input[name="price"]').value = tour.price || '';
+    document.querySelector('input[name="duration_days"]').value = tour.duration_days || '';
     document.querySelector('textarea[name="description"]').value = tour.description || '';
     document.querySelector('input[name="features"]').value = tour.features ? tour.features.join(', ') : '';
     
@@ -326,6 +386,8 @@ async function editTour(tourId) {
     // Прокручиваем к форме
     document.getElementById('admin-section').scrollIntoView({ behavior: 'smooth' });
     
+    console.log('✅ Форма заполнена для редактирования');
+    
   } catch (error) {
     console.error('Ошибка загрузки тура для редактирования:', error);
     alert(`❌ Ошибка: ${error.message}`);
@@ -334,18 +396,24 @@ async function editTour(tourId) {
 
 // Удаление тура
 async function deleteTour(tourId) {
+  console.log('🗑️ Удаление тура:', tourId);
+  
   if (!confirm('Вы уверены, что хотите удалить этот тур?')) {
     return;
   }
   
   try {
+    console.log('Отправляем запрос на удаление...');
     const res = await fetch(`/api/tours/tours/${tourId}`, { 
       method: 'DELETE', 
       headers: authHeader() 
     });
     
+    console.log('Response status:', res.status);
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+      console.error('Ошибка удаления:', errorData);
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
     
@@ -605,6 +673,39 @@ async function createTestTour() {
   }
 }
 
+// Функция для показа формы создания тура
+function showCreateTourForm() {
+  console.log('📝 Показываем форму создания тура');
+  console.log('Текущий пользователь:', currentUser);
+  console.log('Токен:', !!getToken());
+  console.log('Является админом:', isAdmin());
+  
+  // Проверяем, что пользователь авторизован
+  if (!getToken()) {
+    alert('❌ Необходимо войти в систему для создания тура');
+    toggleAuthModal();
+    return;
+  }
+  
+  // Проверяем права администратора
+  if (!isAdmin()) {
+    alert('❌ Только администраторы могут создавать туры');
+    return;
+  }
+  
+  // Сбрасываем форму
+  resetTourForm();
+  
+  // Показываем секцию администратора
+  const adminSection = document.getElementById('admin-section');
+  adminSection.classList.remove('hidden');
+  
+  // Прокручиваем к форме
+  adminSection.scrollIntoView({ behavior: 'smooth' });
+  
+  console.log('✅ Форма создания тура показана');
+}
+
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -626,13 +727,25 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // Добавляем кнопку для создания тестового тура (только для отладки)
+  // Добавляем кнопки для отладки (только для localhost)
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Кнопка создания тестового тура
     const testButton = document.createElement('button');
     testButton.textContent = 'Создать тестовый тур';
     testButton.onclick = createTestTour;
-    testButton.style.cssText = 'position: fixed; top: 10px; right: 10px; z-index: 9999; background: red; color: white; padding: 10px; border: none; border-radius: 5px;';
+    testButton.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
     document.body.appendChild(testButton);
+    
+    // Кнопка создания тура (только для админов)
+    const createButton = document.createElement('button');
+    createButton.textContent = 'Создать тур';
+    createButton.onclick = showCreateTourForm;
+    createButton.style.cssText = 'position: fixed; bottom: 20px; right: 180px; z-index: 9999; background: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+    createButton.id = 'create-tour-button';
+    document.body.appendChild(createButton);
+    
+    // Скрываем кнопку по умолчанию
+    createButton.style.display = 'none';
   }
 });
 
