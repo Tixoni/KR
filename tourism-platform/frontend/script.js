@@ -1,6 +1,9 @@
 // Глобальные переменные
 let currentUser = null;
 
+// Список администраторов (в реальном приложении это должно быть в базе данных)
+const ADMIN_USERS = ['admin', 'manager', 'root', 'boss']; // Добавьте сюда логины администраторов
+
 function showSection(name){
   document.getElementById('section-tours').classList.toggle('hidden', name!=='tours');
   document.getElementById('section-bookings').classList.toggle('hidden', name!=='bookings');
@@ -57,6 +60,11 @@ function authHeader(){
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+// Функция проверки роли администратора
+function isAdmin() {
+  return currentUser && ADMIN_USERS.includes(currentUser.username);
+}
+
 function updateAuthState(isAuthenticated) {
   const authBtn = document.getElementById('auth-btn');
   const logoutBtn = document.getElementById('logout-btn');
@@ -69,8 +77,16 @@ function updateAuthState(isAuthenticated) {
     logoutBtn.classList.remove('hidden');
     userDisplay.classList.remove('hidden');
     bookingsNav.classList.add('authenticated');
-    adminSection.classList.remove('hidden');
+    
+    // Показываем секцию администратора только для админов
+    if (isAdmin()) {
+      adminSection.classList.remove('hidden');
+    } else {
+      adminSection.classList.add('hidden');
+    }
+    
     loadCurrentUser();
+    // loadTours() будет вызван в loadCurrentUser() после загрузки данных пользователя
   } else {
     authBtn.classList.remove('hidden');
     logoutBtn.classList.add('hidden');
@@ -78,6 +94,8 @@ function updateAuthState(isAuthenticated) {
     bookingsNav.classList.remove('authenticated');
     adminSection.classList.add('hidden');
     currentUser = null;
+    // Обновляем туры после выхода, чтобы скрыть кнопки администратора
+    loadTours();
   }
 }
 
@@ -87,7 +105,23 @@ async function loadCurrentUser() {
     if (res.ok) {
       const userData = await res.json();
       currentUser = userData;
-      document.getElementById('username-display').textContent = userData.username || userData.name || 'Пользователь';
+      const usernameDisplay = document.getElementById('username-display');
+      const userDisplay = document.getElementById('user-display');
+      const adminSection = document.getElementById('admin-section');
+      
+      usernameDisplay.textContent = userData.username || userData.name || 'Пользователь';
+      
+      // Добавляем индикатор администратора
+      if (isAdmin()) {
+        userDisplay.classList.add('admin');
+        adminSection.classList.remove('hidden');
+      } else {
+        userDisplay.classList.remove('admin');
+        adminSection.classList.add('hidden');
+      }
+      
+      // Обновляем туры после загрузки данных пользователя
+      loadTours();
     }
   } catch (error) {
     console.error('Ошибка загрузки пользователя:', error);
@@ -96,8 +130,8 @@ async function loadCurrentUser() {
 
 async function loadTours(){
   try {
-    const dest = document.getElementById('filter-destination').value.trim();
-    const url = dest ? `/api/tours/tours?destination=${encodeURIComponent(dest)}` : `/api/tours/tours`;
+  const dest = document.getElementById('filter-destination').value.trim();
+  const url = dest ? `/api/tours/tours?destination=${encodeURIComponent(dest)}` : `/api/tours/tours`;
     // GET /tours не требует аутентификации, поэтому не передаем токен
     const res = await fetch(url);
     
@@ -105,12 +139,13 @@ async function loadTours(){
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
-    const data = await res.json();
-    const root = document.getElementById('tours-list');
+  const data = await res.json();
+  const root = document.getElementById('tours-list');
     const isAuthenticated = !!getToken();
+    const isAdminUser = isAdmin();
     
-    root.innerHTML = data.map(t => (
-      `<div class="card">
+  root.innerHTML = data.map(t => (
+    `<div class="card">
         <h4>${escapeHtml(t.title)}</h4>
         <div class="destination">📍 ${escapeHtml(t.destination)}</div>
         ${t.description ? `<div class="description">${escapeHtml(t.description)}</div>` : ''}
@@ -127,15 +162,15 @@ async function loadTours(){
           <button class="book-btn" onclick="bookTour(${t.id})" ${!t.available || !isAuthenticated ? 'disabled' : ''}>
             ${!isAuthenticated ? '🔒 Войдите для бронирования' : !t.available ? '❌ Недоступен' : '🎯 Забронировать'}
           </button>
-          ${isAuthenticated ? `
+          ${isAdminUser ? `
             <div class="admin-actions">
               <button class="edit-btn" onclick="editTour(${t.id})">✏️ Редактировать</button>
               <button class="delete-btn" onclick="deleteTour(${t.id})">🗑️ Удалить</button>
             </div>
           ` : ''}
         </div>
-      </div>`
-    )).join('');
+    </div>`
+  )).join('');
   } catch (error) {
     console.error('Ошибка загрузки туров:', error);
     document.getElementById('tours-list').innerHTML = `<div class="card error">Ошибка загрузки туров: ${escapeHtml(error.message)}</div>`;
@@ -214,18 +249,18 @@ async function bookTour(tourId) {
 async function handleTourForm(e){
   e.preventDefault();
   try {
-    const form = e.target;
+  const form = e.target;
     const tourId = document.getElementById('tour-id').value;
-    const features = (form.features.value || '').split(',').map(s=>s.trim()).filter(Boolean);
-    const payload = {
-      title: form.title.value,
-      destination: form.destination.value,
-      price: Number(form.price.value),
-      duration_days: Number(form.duration_days.value),
-      description: form.description.value || null,
-      features: features.length? features : null,
-      available: true
-    };
+  const features = (form.features.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const payload = {
+    title: form.title.value,
+    destination: form.destination.value,
+    price: Number(form.price.value),
+    duration_days: Number(form.duration_days.value),
+    description: form.description.value || null,
+    features: features.length? features : null,
+    available: true
+  };
     
     let res;
     if (tourId) {
@@ -345,42 +380,81 @@ async function loadBookings(){
   
   try {
     const url = `/api/bookings/bookings/user/${currentUser.id}`;
-    const res = await fetch(url, { headers: authHeader() });
+  const res = await fetch(url, { headers: authHeader() });
     
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
-    const data = await res.json();
-    const root = document.getElementById('bookings-list');
+  const data = await res.json();
+  const root = document.getElementById('bookings-list');
     
     if (data.length === 0) {
       root.innerHTML = '<div class="card">📋 У вас пока нет бронирований</div>';
       return;
     }
     
-    root.innerHTML = data.map(b => (
-      `<div class="card">
-        <h4>🎫 Бронь #${b.id}</h4>
-        <div class="booking-info">
-          <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
-          <div>👥 Участники: ${b.participants_count}</div>
-          <div class="price">💰 Сумма: ${b.total_price} ₽</div>
-          <div class="status">
-            <span class="status-badge ${b.status}">${getStatusText(b.status)}</span>
-            <span class="payment-badge ${b.payment_status}">${getPaymentText(b.payment_status)}</span>
+    // Разделяем бронирования на актуальные и отменённые
+    const activeBookings = data.filter(b => b.status !== 'cancelled');
+    const cancelledBookings = data.filter(b => b.status === 'cancelled');
+    
+    let html = '';
+    
+    // Актуальные бронирования
+    if (activeBookings.length > 0) {
+      html += `
+        <div class="bookings-section">
+          <h3>📋 Актуальные бронирования</h3>
+          <div class="bookings-grid">
+            ${activeBookings.map(b => createBookingCard(b)).join('')}
           </div>
         </div>
-        <div class="booking-actions">
-          ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
-          ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">❌ Отменить</button>`:''}
+      `;
+    }
+    
+    // Отменённые бронирования
+    if (cancelledBookings.length > 0) {
+      html += `
+        <div class="bookings-section">
+          <h3>❌ Отменённые бронирования</h3>
+          <div class="bookings-grid cancelled">
+            ${cancelledBookings.map(b => createBookingCard(b)).join('')}
+          </div>
         </div>
-      </div>`
-    )).join('');
+      `;
+    }
+    
+    if (activeBookings.length === 0 && cancelledBookings.length === 0) {
+      html = '<div class="card">📋 У вас пока нет бронирований</div>';
+    }
+    
+    root.innerHTML = html;
   } catch (error) {
     console.error('Ошибка загрузки бронирований:', error);
     document.getElementById('bookings-list').innerHTML = `<div class="card error">Ошибка загрузки бронирований: ${escapeHtml(error.message)}</div>`;
   }
+}
+
+// Функция создания карточки бронирования
+function createBookingCard(b) {
+  return `
+    <div class="card booking-card ${b.status}">
+      <h4>🎫 Бронь #${b.id}</h4>
+      <div class="booking-info">
+        <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
+        <div>👥 Участники: ${b.participants_count}</div>
+        <div class="price">💰 Сумма: ${b.total_price} ₽</div>
+        <div class="status">
+          <span class="status-badge ${b.status}">${getStatusText(b.status)}</span>
+          <span class="payment-badge ${b.payment_status}">${getPaymentText(b.payment_status)}</span>
+        </div>
+      </div>
+      <div class="booking-actions">
+        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
+        ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">❌ Отменить</button>`:''}
+      </div>
+    </div>
+  `;
 }
 
 function getStatusText(status) {
@@ -410,7 +484,7 @@ async function cancelBooking(id){
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
-    loadBookings();
+  loadBookings();
   } catch (error) {
     console.error('Ошибка отмены бронирования:', error);
     alert(`Ошибка отмены бронирования: ${error.message}`);
@@ -424,7 +498,7 @@ async function confirmBooking(id){
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
-    loadBookings();
+  loadBookings();
   } catch (error) {
     console.error('Ошибка подтверждения бронирования:', error);
     alert(`Ошибка подтверждения бронирования: ${error.message}`);
@@ -439,16 +513,16 @@ function escapeHtml(s){
 async function login(e){
   e.preventDefault();
   try {
-    const form = e.target;
-    const payload = { username: form.username.value, password: form.password.value };
-    const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const form = e.target;
+  const payload = { username: form.username.value, password: form.password.value };
+  const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
     
-    const data = await res.json();
+  const data = await res.json();
     if (data.access_token) {
       setToken(data.access_token);
       document.getElementById('login-status').textContent = '✅ Успешно!';
@@ -468,15 +542,15 @@ async function login(e){
 async function registerUser(e){
   e.preventDefault();
   try {
-    const form = e.target;
-    const payload = { 
-      username: form.username.value,
-      password: form.password.value,
-      email: form.email.value,
-      name: form.name.value,
-      phone: form.phone.value || null
-    };
-    const res = await fetch('/api/auth/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const form = e.target;
+  const payload = { 
+    username: form.username.value,
+    password: form.password.value,
+    email: form.email.value,
+    name: form.name.value,
+    phone: form.phone.value || null
+  };
+  const res = await fetch('/api/auth/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
@@ -530,6 +604,7 @@ async function createTestTour() {
     console.error('Ошибка создания тестового тура:', error);
   }
 }
+
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {

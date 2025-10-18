@@ -177,6 +177,8 @@ button:active {
   padding: 20px;
   box-shadow: var(--shadow);
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
 }
 
 .card:hover {
@@ -389,6 +391,42 @@ button:active {
   margin: 8px 0;
   font-size: 0.9rem;
   color: var(--muted);
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.card .features ul {
+  margin: 0;
+  padding-left: 16px;
+  list-style-type: disc;
+}
+
+.card .features li {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+/* Стилизация скроллбара для features */
+.card .features::-webkit-scrollbar {
+  width: 6px;
+}
+
+.card .features::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.card .features::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 3px;
+}
+
+.card .features::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 .booking-info {
@@ -474,7 +512,7 @@ button:active {
 
 /* Стили для карточек туров */
 .card-actions {
-  margin-top: 12px;
+  margin-top: auto;
 }
 
 .admin-actions {
@@ -522,6 +560,57 @@ button:active {
 
 .cancel-btn:hover {
   background: #475569;
+}
+
+/* Стили для секций бронирований */
+.bookings-section {
+  margin-bottom: 32px;
+}
+
+.bookings-section h3 {
+  margin: 0 0 16px 0;
+  color: var(--primary);
+  font-size: 1.3rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.bookings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.bookings-grid.cancelled {
+  opacity: 0.7;
+}
+
+.booking-card {
+  position: relative;
+}
+
+.booking-card.cancelled {
+  background: #f8f9fa;
+  border-color: #e9ecef;
+}
+
+.booking-card.cancelled h4 {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.booking-card.cancelled .price {
+  color: var(--muted);
+}
+
+/* Индикатор роли пользователя */
+.user-info.admin {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.user-info.admin::after {
+  content: " 👑";
 }
 
 @media (max-width: 768px) {
