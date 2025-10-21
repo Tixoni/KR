@@ -12,6 +12,7 @@
       <nav>
         <a href="#tours" onclick="showSection('tours')">Туры</a>
         <a href="#bookings" onclick="showSection('bookings')" id="bookings-nav" class="auth-required">Мои бронирования</a>
+        <a href="#users" onclick="showSection('users')" id="users-nav" class="auth-required admin-only hidden">Пользователи</a>
         <div class="user-section">
           <span id="user-display" class="user-info hidden">Привет, <span id="username-display"></span>!</span>
           <button id="auth-btn" class="auth-btn" onclick="toggleAuthModal()">Войти</button>
@@ -57,6 +58,14 @@
           <button onclick="loadBookings()">🔄 Обновить</button>
         </div>
         <div id="bookings-list" class="cards"></div>
+      </section>
+
+      <section id="section-users" class="section hidden">
+        <h2>👥 Все пользователи</h2>
+        <div class="controls">
+          <button onclick="loadAllUsers()">🔄 Обновить</button>
+        </div>
+        <div id="users-list" class="cards"></div>
       </section>
 
     </main>

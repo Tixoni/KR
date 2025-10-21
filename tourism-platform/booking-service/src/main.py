@@ -126,7 +126,7 @@ async def get_booking(
     return booking
 
 # GET /bookings/user/{user_id} - бронирования пользователя
-@app.get("/bookings/user/{user_id}", response_model=List[BookingSchema])
+@app.get("/bookings/user/{user_id}")
 async def get_user_bookings(
     user_id: int, 
     skip: int = Query(0, ge=0),
@@ -141,7 +141,49 @@ async def get_user_bookings(
         query = query.filter(BookingModel.status == status_filter)
     
     bookings = query.offset(skip).limit(limit).all()
-    return bookings
+    
+    # Добавляем информацию о туре для каждого бронирования
+    result = []
+    for booking in bookings:
+        booking_dict = {
+            "id": booking.id,
+            "user_id": booking.user_id,
+            "tour_id": booking.tour_id,
+            "booking_date": booking.booking_date,
+            "travel_date": booking.travel_date,
+            "participants_count": booking.participants_count,
+            "total_price": float(booking.total_price),
+            "status": booking.status,
+            "payment_status": booking.payment_status,
+            "special_requests": booking.special_requests,
+            "contact_phone": booking.contact_phone,
+            "contact_email": booking.contact_email,
+            "created_at": booking.created_at,
+            "updated_at": booking.updated_at,
+            "tour_info": None
+        }
+        
+        # Пытаемся получить информацию о туре
+        try:
+            tours_service_url = os.getenv("TOURS_SERVICE_URL", "http://tours-service:8001")
+            async with httpx.AsyncClient() as client:
+                tour_response = await client.get(f"{tours_service_url}/tours/{booking.tour_id}")
+                if tour_response.status_code == 200:
+                    tour_data = tour_response.json()
+                    booking_dict["tour_info"] = {
+                        "title": tour_data.get("title"),
+                        "destination": tour_data.get("destination"),
+                        "price": tour_data.get("price"),
+                        "duration_days": tour_data.get("duration_days")
+                    }
+                else:
+                    print(f"⚠️ Тур {booking.tour_id} не найден (статус: {tour_response.status_code})")
+        except Exception as e:
+            print(f"⚠️ Ошибка получения информации о туре {booking.tour_id}: {e}")
+        
+        result.append(booking_dict)
+    
+    return result
 
 # GET /bookings/tour/{tour_id} - бронирования конкретного тура
 @app.get("/bookings/tour/{tour_id}", response_model=List[BookingSchema])
@@ -286,6 +328,40 @@ async def get_all_bookings(
     
     bookings = query.offset(skip).limit(limit).all()
     return bookings
+
+# DELETE /bookings/tour/{tour_id} - удалить все бронирования тура (вызывается из tours-service)
+@app.delete("/bookings/tour/{tour_id}")
+async def delete_bookings_by_tour(tour_id: int, db: Session = Depends(get_db)):
+    """
+    Удаляет все бронирования для указанного тура.
+    Вызывается из tours-service при удалении тура.
+    """
+    try:
+        print(f"🗑️ Удаляем все бронирования для тура {tour_id}")
+        
+        # Находим все бронирования для этого тура
+        bookings = db.query(BookingModel).filter(BookingModel.tour_id == tour_id).all()
+        
+        if not bookings:
+            print(f"ℹ️ Бронирования для тура {tour_id} не найдены")
+            return {"message": "No bookings found for this tour"}
+        
+        print(f"📋 Найдено {len(bookings)} бронирований для удаления")
+        
+        # Удаляем все бронирования
+        for booking in bookings:
+            db.delete(booking)
+            print(f"🗑️ Удалено бронирование ID: {booking.id}")
+        
+        db.commit()
+        print(f"✅ Все бронирования для тура {tour_id} успешно удалены")
+        
+        return {"message": f"Deleted {len(bookings)} bookings for tour {tour_id}"}
+        
+    except Exception as e:
+        print(f"❌ Ошибка при удалении бронирований для тура {tour_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting bookings: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

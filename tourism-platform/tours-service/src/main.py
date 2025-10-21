@@ -3,6 +3,8 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import os
+import httpx
 
 # Импорты для работы в контейнере
 from .models import Tour as TourModel  # Модель из models.py
@@ -122,8 +124,19 @@ async def delete_tour(
     if not tour:
         raise HTTPException(status_code=404, detail="Tour not found")
     
+    # Удаляем тур из базы данных
     db.delete(tour)
     db.commit()
+    
+    # Уведомляем booking-service об удалении тура
+    try:
+        import httpx
+        booking_service_url = os.getenv("BOOKING_SERVICE_URL", "http://booking-service:8002")
+        async with httpx.AsyncClient() as client:
+            await client.delete(f"{booking_service_url}/bookings/tour/{tour_id}")
+    except Exception as e:
+        print(f"Предупреждение: не удалось уведомить booking-service об удалении тура {tour_id}: {e}")
+    
     return {"message": "Tour deleted successfully"}
 
 if __name__ == "__main__":

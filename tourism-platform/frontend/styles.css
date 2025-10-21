@@ -613,29 +613,218 @@ button:active {
   content: " 👑";
 }
 
+/* Стили для секции пользователей */
+.user-details {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.user-details div {
+  margin-bottom: 5px;
+}
+
+.user-status.active {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.user-status.inactive {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+/* Стили для удаленных туров */
+.tour-deleted {
+  color: #dc3545;
+  font-weight: bold;
+  background: #f8d7da;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  border: 1px solid #f5c6cb;
+}
+
+.tour-deleted-note {
+  color: #856404;
+  font-size: 12px;
+  font-style: italic;
+  background: #fff3cd;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #ffeaa7;
+}
+
+/* Стили для индикаторов загрузки */
+.loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.loading::after {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top: 2px solid var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Улучшенные стили для ошибок */
+.card.error {
+  background: #fef2f2;
+  border-color: var(--error);
+  color: var(--error);
+  text-align: center;
+  padding: 30px 20px;
+}
+
+.card.error::before {
+  content: '⚠️ ';
+  font-size: 1.5rem;
+  display: block;
+  margin-bottom: 10px;
+}
+
+/* Стили для успешных операций */
+.card.success {
+  background: #f0fdf4;
+  border-color: var(--success);
+  color: var(--success);
+  text-align: center;
+  padding: 20px;
+}
+
+/* Улучшенная адаптивность */
 @media (max-width: 768px) {
   .header {
     flex-direction: column;
     gap: 16px;
     text-align: center;
+    padding: 16px;
+  }
+  
+  .header h1 {
+    font-size: 1.5rem;
   }
   
   nav {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 8px;
+  }
+  
+  nav a {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+  }
+  
+  .user-section {
+    flex-direction: column;
+    gap: 8px;
   }
   
   .grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
   
   .cards {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .card {
+    padding: 16px;
   }
   
   .modal-content {
     width: 95%;
     margin: 20px;
+    max-height: 95vh;
+  }
+  
+  .modal-header {
+    padding: 16px 16px 0 16px;
+  }
+  
+  .auth-tabs {
+    margin: 0 16px 16px 16px;
+  }
+  
+  .auth-tab {
+    padding: 0 16px 16px 16px;
+  }
+  
+  .form-group {
+    margin-bottom: 16px;
+  }
+  
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .controls input {
+    width: 100%;
+  }
+  
+  .admin-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .edit-btn, .delete-btn {
+    width: 100%;
+  }
+  
+  .booking-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .confirm-btn, .cancel-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 10px;
+  }
+  
+  .header {
+    padding: 12px;
+  }
+  
+  .card {
+    padding: 12px;
+  }
+  
+  .modal-content {
+    width: 100%;
+    margin: 10px;
+    border-radius: 8px;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .form-actions button {
+    width: 100%;
   }
 }
 

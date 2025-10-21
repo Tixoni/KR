@@ -1,5 +1,14 @@
-// Глобальные переменные
+
+
+
+// --------------------------------------------------------------------------------Глобальные переменные
 let currentUser = null;
+
+var lala = new Audio("./sounds/gunshot-mem-short.mp3")
+console.log(lala)
+
+var lala_eagle = new Audio("./sounds/eagle.mp3")
+
 
 // Список администраторов (в реальном приложении это должно быть в базе данных)
 const ADMIN_USERS = ['admin', 'manager', 'root', 'boss']; // Добавьте сюда логины администраторов
@@ -76,6 +85,7 @@ function updateAuthState(isAuthenticated) {
   const logoutBtn = document.getElementById('logout-btn');
   const userDisplay = document.getElementById('user-display');
   const bookingsNav = document.getElementById('bookings-nav');
+  const usersNav = document.getElementById('users-nav');
   const adminSection = document.getElementById('admin-section');
   
   if (isAuthenticated) {
@@ -88,18 +98,28 @@ function updateAuthState(isAuthenticated) {
     if (isAdmin()) {
       console.log('👑 Показываем секцию администратора');
       adminSection.classList.remove('hidden');
-      // Показываем кнопку создания тура
+      usersNav.classList.remove('hidden');
+      // Показываем кнопки для админов
       const createButton = document.getElementById('create-tour-button');
+      const testButton = document.getElementById('test-tour-button');
       if (createButton) {
         createButton.style.display = 'block';
+      }
+      if (testButton) {
+        testButton.style.display = 'block';
       }
     } else {
       console.log('👤 Скрываем секцию администратора');
       adminSection.classList.add('hidden');
-      // Скрываем кнопку создания тура
+      usersNav.classList.add('hidden');
+      // Скрываем кнопки для админов
       const createButton = document.getElementById('create-tour-button');
+      const testButton = document.getElementById('test-tour-button');
       if (createButton) {
         createButton.style.display = 'none';
+      }
+      if (testButton) {
+        testButton.style.display = 'none';
       }
     }
     
@@ -110,8 +130,20 @@ function updateAuthState(isAuthenticated) {
     logoutBtn.classList.add('hidden');
     userDisplay.classList.add('hidden');
     bookingsNav.classList.remove('authenticated');
+    usersNav.classList.add('hidden');
     adminSection.classList.add('hidden');
     currentUser = null;
+    
+    // Скрываем все кнопки для админов
+    const createButton = document.getElementById('create-tour-button');
+    const testButton = document.getElementById('test-tour-button');
+    if (createButton) {
+      createButton.style.display = 'none';
+    }
+    if (testButton) {
+      testButton.style.display = 'none';
+    }
+    
     // Обновляем туры после выхода, чтобы скрыть кнопки администратора
     loadTours();
   }
@@ -120,7 +152,17 @@ function updateAuthState(isAuthenticated) {
 async function loadCurrentUser() {
   try {
     console.log('👤 Загружаем данные пользователя...');
-    const res = await fetch('/api/auth/users/me', { headers: authHeader() });
+    
+    // Добавляем таймаут для запроса
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд таймаут
+    
+    const res = await fetch('/api/auth/users/me', { 
+      headers: authHeader(),
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+    
     console.log('Response status:', res.status);
     
     if (res.ok) {
@@ -157,19 +199,36 @@ async function loadCurrentUser() {
     }
   } catch (error) {
     console.error('Ошибка загрузки пользователя:', error);
+    
+    // Если токен истек или недействителен, выходим из системы
+    if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+      console.log('Токен истек, выходим из системы');
+      setToken(null);
+      updateAuthState(false);
+    }
   }
 }
 
 async function loadTours(){
   try {
-  const dest = document.getElementById('filter-destination').value.trim();
-  const url = dest ? `/api/tours/tours?destination=${encodeURIComponent(dest)}` : `/api/tours/tours`;
-    // GET /tours не требует аутентификации, поэтому не передаем токен
-    const res = await fetch(url);
+    // Показываем индикатор загрузки
+    const toursList = document.getElementById('tours-list');
+    toursList.innerHTML = '<div class="card loading">🔄 Загрузка туров...</div>';
     
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    }
+    const dest = document.getElementById('filter-destination').value.trim();
+    const url = dest ? `/api/tours/tours?destination=${encodeURIComponent(dest)}` : `/api/tours/tours`;
+    
+    // Добавляем таймаут для запроса
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 секунд таймаут
+    
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
     
   const data = await res.json();
   const root = document.getElementById('tours-list');
@@ -216,14 +275,35 @@ async function loadTours(){
         </div>
     </div>`;
   }).join('');
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Превышено время ожидания. Попробуйте еще раз.');
+      }
+      throw fetchError;
+    }
   } catch (error) {
     console.error('Ошибка загрузки туров:', error);
-    document.getElementById('tours-list').innerHTML = `<div class="card error">Ошибка загрузки туров: ${escapeHtml(error.message)}</div>`;
+    let errorMessage = 'Ошибка загрузки туров';
+    
+    if (error.message.includes('Failed to fetch')) {
+      errorMessage = 'Сервер недоступен. Проверьте подключение к интернету.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Превышено время ожидания. Попробуйте еще раз.';
+    } else if (error.message.includes('404')) {
+      errorMessage = 'Сервис туров недоступен.';
+    } else {
+      errorMessage = `Ошибка: ${escapeHtml(error.message)}`;
+    }
+    
+    document.getElementById('tours-list').innerHTML = `<div class="card error">${errorMessage}</div>`;
   }
 }
 
 // Функция бронирования тура в один клик
 async function bookTour(tourId) {
+  // Убираем автоматическое воспроизведение звука для лучшего UX
+  // lala.play();// -----------звук
   if (!getToken()) {
     toggleAuthModal();
     return;
@@ -244,13 +324,35 @@ async function bookTour(tourId) {
     console.log('Начинаем бронирование тура:', tourId);
     console.log('Данные пользователя:', currentUser);
     
-    // Получаем информацию о туре
-    const tourRes = await fetch(`/api/tours/tours/${tourId}`, { headers: authHeader() });
-    if (!tourRes.ok) {
-      throw new Error(`Тур не найден: HTTP ${tourRes.status}`);
-    }
-    const tour = await tourRes.json();
-    console.log('Данные тура:', tour);
+    // Показываем индикатор загрузки
+    const bookButton = document.querySelector(`button[onclick="bookTour(${tourId})"]`);
+    const originalText = bookButton.textContent;
+    bookButton.textContent = '🔄 Бронирование...';
+    bookButton.disabled = true;
+    
+    // Добавляем таймаут для запроса
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 секунд таймаут
+    
+    try {
+      // Получаем информацию о туре
+      const tourRes = await fetch(`/api/tours/tours/${tourId}`, { 
+        headers: authHeader(),
+        signal: controller.signal 
+      });
+      clearTimeout(timeoutId);
+      
+      if (!tourRes.ok) {
+        if (tourRes.status === 404) {
+          throw new Error('Тур не найден или был удален');
+        } else if (tourRes.status === 401) {
+          throw new Error('Сессия истекла. Войдите в систему заново');
+        } else {
+          throw new Error(`Ошибка сервера: ${tourRes.status}`);
+        }
+      }
+      const tour = await tourRes.json();
+      console.log('Данные тура:', tour);
     
     // Создаем бронирование
     const bookingPayload = {
@@ -265,28 +367,63 @@ async function bookTour(tourId) {
     
     console.log('Отправляем данные бронирования:', bookingPayload);
     
-    const res = await fetch('/api/bookings/bookings', { 
-      method: 'POST', 
-      headers: {...{'Content-Type': 'application/json'}, ...authHeader()}, 
-      body: JSON.stringify(bookingPayload)
-    });
-    
-    console.log('Ответ сервера:', res.status, res.statusText);
-    
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
-      console.error('Детали ошибки:', errorData);
-      throw new Error(errorData.detail || `HTTP ${res.status}: ${res.statusText}`);
+      const res = await fetch('/api/bookings/bookings', { 
+        method: 'POST', 
+        headers: {...{'Content-Type': 'application/json'}, ...authHeader()}, 
+        body: JSON.stringify(bookingPayload),
+        signal: controller.signal
+      });
+      
+      console.log('Ответ сервера:', res.status, res.statusText);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+        console.error('Детали ошибки:', errorData);
+        
+        if (res.status === 401) {
+          throw new Error('Сессия истекла. Войдите в систему заново');
+        } else if (res.status === 400) {
+          throw new Error(errorData.detail || 'Некорректные данные бронирования');
+        } else if (res.status === 404) {
+          throw new Error('Тур не найден');
+        } else {
+          throw new Error(errorData.detail || `Ошибка сервера: ${res.status}`);
+        }
+      }
+      
+      const bookingResult = await res.json();
+      console.log('Результат бронирования:', bookingResult);
+      
+      alert(`✅ Тур "${tour.title}" успешно забронирован!`);
+      loadTours(); // Обновляем список туров
+      
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Превышено время ожидания. Попробуйте еще раз.');
+      }
+      throw fetchError;
     }
-    
-    const bookingResult = await res.json();
-    console.log('Результат бронирования:', bookingResult);
-    
-    alert(`✅ Тур "${tour.title}" успешно забронирован!`);
-    loadTours(); // Обновляем список туров
   } catch (error) {
     console.error('Ошибка бронирования:', error);
-    alert(`❌ Ошибка бронирования: ${error.message}`);
+    
+    let errorMessage = 'Ошибка бронирования';
+    if (error.message.includes('Failed to fetch')) {
+      errorMessage = 'Сервер недоступен. Проверьте подключение к интернету.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Превышено время ожидания. Попробуйте еще раз.';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    alert(`❌ ${errorMessage}`);
+  } finally {
+    // Восстанавливаем кнопку
+    const bookButton = document.querySelector(`button[onclick="bookTour(${tourId})"]`);
+    if (bookButton) {
+      bookButton.textContent = originalText;
+      bookButton.disabled = false;
+    }
   }
 }
 
@@ -356,6 +493,8 @@ async function handleTourForm(e){
 
 // Редактирование тура
 async function editTour(tourId) {
+  // Убираем автоматическое воспроизведение звука
+  // lala.play();// -----------звук
   try {
     console.log('✏️ Редактирование тура:', tourId);
     const res = await fetch(`/api/tours/tours/${tourId}`, { headers: authHeader() });
@@ -396,10 +535,15 @@ async function editTour(tourId) {
 
 // Удаление тура
 async function deleteTour(tourId) {
+  // Убираем автоматическое воспроизведение звука
+  // lala.play();// -----------звук
   console.log('🗑️ Удаление тура:', tourId);
   
-  if (!confirm('Вы уверены, что хотите удалить этот тур?')) {
-    return;
+  // Убираем подтверждение для localhost
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    if (!confirm('Вы уверены, что хотите удалить этот тур?')) {
+      return;
+    }
   }
   
   try {
@@ -505,10 +649,20 @@ async function loadBookings(){
 
 // Функция создания карточки бронирования
 function createBookingCard(b) {
+  // Проверяем, существует ли тур
+  const tourInfo = b.tour_info || {};
+  const tourExists = tourInfo.title && tourInfo.destination;
+  
   return `
     <div class="card booking-card ${b.status}">
-      <h4>🎫 Бронь #${b.id}</h4>
+      <h4>🎫 Бронирование</h4>
       <div class="booking-info">
+        ${tourExists ? `
+          <div><strong>🎯 Тур:</strong> ${escapeHtml(tourInfo.title)}</div>
+          <div><strong>📍 Направление:</strong> ${escapeHtml(tourInfo.destination)}</div>
+        ` : `
+          <div class="tour-deleted">⚠️ Тур был удален администратором</div>
+        `}
         <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
         <div>👥 Участники: ${b.participants_count}</div>
         <div class="price">💰 Сумма: ${b.total_price} ₽</div>
@@ -518,8 +672,9 @@ function createBookingCard(b) {
         </div>
       </div>
       <div class="booking-actions">
-        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
+        ${b.status==='pending' && tourExists ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
         ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">❌ Отменить</button>`:''}
+        ${!tourExists ? `<div class="tour-deleted-note">Бронирование автоматически отменено</div>`:''}
       </div>
     </div>
   `;
@@ -580,10 +735,43 @@ function escapeHtml(s){
 // Функции авторизации
 async function login(e){
   e.preventDefault();
-  try {
+  // Убираем автоматическое воспроизведение звука
+  // lala_eagle.play();// -----------звук
+  
+  // Валидация формы
   const form = e.target;
-  const payload = { username: form.username.value, password: form.password.value };
-  const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const username = form.username.value.trim();
+  const password = form.password.value;
+  
+  if (!username || !password) {
+    document.getElementById('login-status').textContent = '❌ Заполните все поля';
+    document.getElementById('login-status').className = 'status error';
+    return;
+  }
+  
+  if (username.length < 3) {
+    document.getElementById('login-status').textContent = '❌ Логин должен содержать минимум 3 символа';
+    document.getElementById('login-status').className = 'status error';
+    return;
+  }
+  
+  if (password.length < 6) {
+    document.getElementById('login-status').textContent = '❌ Пароль должен содержать минимум 6 символов';
+    document.getElementById('login-status').className = 'status error';
+    return;
+  }
+  
+  try {
+    // Показываем индикатор загрузки
+    document.getElementById('login-status').textContent = '🔄 Вход в систему...';
+    document.getElementById('login-status').className = 'status';
+    
+    const payload = { username, password };
+    const res = await fetch('/api/auth/login', { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body: JSON.stringify(payload)
+    });
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
@@ -609,16 +797,64 @@ async function login(e){
 
 async function registerUser(e){
   e.preventDefault();
-  try {
+  
+  // Валидация формы
   const form = e.target;
-  const payload = { 
-    username: form.username.value,
-    password: form.password.value,
-    email: form.email.value,
-    name: form.name.value,
-    phone: form.phone.value || null
-  };
-  const res = await fetch('/api/auth/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const username = form.username.value.trim();
+  const password = form.password.value;
+  const email = form.email.value.trim();
+  const name = form.name.value.trim();
+  const phone = form.phone.value.trim();
+  
+  if (!username || !password || !email || !name) {
+    document.getElementById('register-status').textContent = '❌ Заполните все обязательные поля';
+    document.getElementById('register-status').className = 'status error';
+    return;
+  }
+  
+  if (username.length < 3) {
+    document.getElementById('register-status').textContent = '❌ Логин должен содержать минимум 3 символа';
+    document.getElementById('register-status').className = 'status error';
+    return;
+  }
+  
+  if (password.length < 6) {
+    document.getElementById('register-status').textContent = '❌ Пароль должен содержать минимум 6 символов';
+    document.getElementById('register-status').className = 'status error';
+    return;
+  }
+  
+  // Простая валидация email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    document.getElementById('register-status').textContent = '❌ Введите корректный email';
+    document.getElementById('register-status').className = 'status error';
+    return;
+  }
+  
+  if (name.length < 2) {
+    document.getElementById('register-status').textContent = '❌ Имя должно содержать минимум 2 символа';
+    document.getElementById('register-status').className = 'status error';
+    return;
+  }
+  
+  try {
+    // Показываем индикатор загрузки
+    document.getElementById('register-status').textContent = '🔄 Создание аккаунта...';
+    document.getElementById('register-status').className = 'status';
+    
+    const payload = { 
+      username,
+      password,
+      email,
+      name,
+      phone: phone || null
+    };
+    const res = await fetch('/api/auth/users', { 
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body: JSON.stringify(payload)
+    });
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
@@ -637,15 +873,83 @@ async function registerUser(e){
   }
 }
 
-function logout(){ 
+async function logout(){ 
+  // Убираем автоматическое воспроизведение звука
+  // lala.play();// -----------звук
   setToken(null); 
   showSection('tours'); // Переключаемся на туры
 }
 
 
-// Функция для создания тестового тура (только для отладки)
-async function createTestTour() {
+// Функция для загрузки всех пользователей (только для админов)
+async function loadAllUsers() {
+  if (!isAdmin()) {
+    alert('❌ Доступ запрещен. Только администраторы могут просматривать список пользователей.');
+    return;
+  }
+
   try {
+    console.log('👥 Загружаем список всех пользователей...');
+    const res = await fetch('/api/auth/users', { 
+      headers: authHeader() 
+    });
+    
+    if (!res.ok) {
+      throw new Error(`Ошибка загрузки пользователей: ${res.status}`);
+    }
+    
+    const users = await res.json();
+    console.log('👥 Получены пользователи:', users);
+    
+    const root = document.getElementById('users-list');
+    if (!root) {
+      console.error('❌ Элемент users-list не найден');
+      return;
+    }
+    
+    if (users.length === 0) {
+      root.innerHTML = '<div class="card info">👥 Пользователи не найдены</div>';
+      return;
+    }
+    
+    root.innerHTML = users.map(user => `
+      <div class="card">
+        <h4>👤 ${escapeHtml(user.username)}</h4>
+        <div class="user-details">
+          <div><strong>ID:</strong> ${user.id}</div>
+          <div><strong>Email:</strong> ${escapeHtml(user.email || 'Не указан')}</div>
+          <div><strong>Дата регистрации:</strong> ${new Date(user.created_at).toLocaleDateString()}</div>
+          <div class="user-status ${user.is_active ? 'active' : 'inactive'}">
+            ${user.is_active ? '✅ Активен' : '❌ Неактивен'}
+          </div>
+        </div>
+      </div>
+    `).join('');
+    
+  } catch (error) {
+    console.error('❌ Ошибка загрузки пользователей:', error);
+    const root = document.getElementById('users-list');
+    if (root) {
+      root.innerHTML = `<div class="card error">❌ Ошибка загрузки пользователей: ${escapeHtml(error.message)}</div>`;
+    }
+  }
+}
+
+// Функция для создания тестового тура (только для администраторов)
+async function createTestTour() {
+  // Проверяем права администратора
+  if (!isAdmin()) {
+    alert('❌ Только администраторы могут создавать тестовые туры');
+    return;
+  }
+  
+  try {
+    // Показываем индикатор загрузки
+    const testButton = document.getElementById('test-tour-button');
+    const originalText = testButton.textContent;
+    testButton.textContent = '🔄 Создание...';
+    testButton.disabled = true;
+    
     const testTour = {
       title: "Тестовый тур в Анталью",
       destination: "Анталья",
@@ -663,13 +967,24 @@ async function createTestTour() {
     });
     
     if (res.ok) {
-      console.log('Тестовый тур создан');
+      console.log('✅ Тестовый тур создан');
+      alert('✅ Тестовый тур успешно создан!');
       loadTours();
     } else {
-      console.error('Ошибка создания тестового тура:', res.status);
+      const errorData = await res.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+      console.error('Ошибка создания тестового тура:', errorData);
+      alert(`❌ Ошибка создания тестового тура: ${errorData.detail || res.status}`);
     }
   } catch (error) {
     console.error('Ошибка создания тестового тура:', error);
+    alert(`❌ Ошибка создания тестового тура: ${error.message}`);
+  } finally {
+    // Восстанавливаем кнопку
+    const testButton = document.getElementById('test-tour-button');
+    if (testButton) {
+      testButton.textContent = originalText;
+      testButton.disabled = false;
+    }
   }
 }
 
@@ -727,26 +1042,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
-  // Добавляем кнопки для отладки (только для localhost)
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // Кнопка создания тестового тура
-    const testButton = document.createElement('button');
-    testButton.textContent = 'Создать тестовый тур';
-    testButton.onclick = createTestTour;
-    testButton.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-    document.body.appendChild(testButton);
-    
-    // Кнопка создания тура (только для админов)
-    const createButton = document.createElement('button');
-    createButton.textContent = 'Создать тур';
-    createButton.onclick = showCreateTourForm;
-    createButton.style.cssText = 'position: fixed; bottom: 20px; right: 180px; z-index: 9999; background: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-    createButton.id = 'create-tour-button';
-    document.body.appendChild(createButton);
-    
-    // Скрываем кнопку по умолчанию
-    createButton.style.display = 'none';
-  }
+  // Добавляем кнопки для администраторов
+  // Кнопка создания тестового тура (только для админов)
+  const testButton = document.createElement('button');
+  testButton.textContent = 'Создать тестовый тур';
+  testButton.onclick = createTestTour;
+  testButton.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: none;';
+  testButton.id = 'test-tour-button';
+  document.body.appendChild(testButton);
+  
+  // Кнопка создания тура (только для админов)
+  const createButton = document.createElement('button');
+  createButton.textContent = 'Создать тур';
+  createButton.onclick = showCreateTourForm;
+  createButton.style.cssText = 'position: fixed; bottom: 20px; right: 180px; z-index: 9999; background: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: none;';
+  createButton.id = 'create-tour-button';
+  document.body.appendChild(createButton);
 });
 
 
