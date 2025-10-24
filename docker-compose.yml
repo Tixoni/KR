@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: tourism_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tourism_network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: tourism_auth_service
+    environment:
+      # секрет должен совпадать у всех сервисов, кто валидирует токены
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      # внутри сети compose используем хост postgres
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - tourism_network
+
+  tours-service:
+    build:
+      context: ./tours-service
+      dockerfile: Dockerfile
+    container_name: tourism_tours_service
+    environment:
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres
+    networks:
+      - tourism_network
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: tourism_booking_service
+    environment:
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      AUTH_SERVICE_URL: "http://auth-service:8000"
+      TOURS_SERVICE_URL: "http://tours-service:8001"
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+      - auth-service
+      - tours-service
+    networks:
+      - tourism_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tourism_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - tours-service
+      - booking-service
+    networks:
+      - tourism_network
+
+volumes:
+  postgres_data:
+
+networks:
+  tourism_network:
+    driver: bridge
