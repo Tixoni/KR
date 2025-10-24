@@ -93,6 +93,7 @@ async def create_booking(
         print(f"Цена тура: {tour_price}, общая цена: {total_price}")
         
         db_booking = BookingModel(
+            title=booking.title,
             user_id=booking.user_id,
             tour_id=booking.tour_id,
             travel_date=booking.travel_date,

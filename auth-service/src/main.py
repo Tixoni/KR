@@ -8,9 +8,13 @@ from jose import JWTError, jwt
 
 from . import models, schemas, auth_utils
 from .database import SessionLocal, engine, get_db
+from sqlalchemy.exc import SQLAlchemyError
 
-# Создаем таблицы в БД
-models.Base.metadata.create_all(bind=engine)
+# Создаем таблицы в БД (если БД недоступна — не падаем)
+try:
+    models.Base.metadata.create_all(bind=engine)
+except SQLAlchemyError as e:
+    print(f"Связь с БД разорвана при инициализации таблиц: {e}")
 
 app = FastAPI(
     title="Auth Service",

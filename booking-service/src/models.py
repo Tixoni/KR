@@ -24,6 +24,7 @@ class Booking(Base):
     tour_id = Column(Integer, nullable=False, index=True)
     
     # Основная информация о бронировании
+    title = Column(String(200), nullable=False)
     booking_date = Column(DateTime(timezone=True), server_default=func.now())
     travel_date = Column(DateTime(timezone=True), nullable=False)
     participants_count = Column(Integer, nullable=False, default=1)

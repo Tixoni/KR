@@ -39,6 +39,7 @@ CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'comple
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'refunded');
 
 CREATE TABLE IF NOT EXISTS bookings (
+    title VARCHAR(200) NOT NULL,
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     tour_id INTEGER NOT NULL,

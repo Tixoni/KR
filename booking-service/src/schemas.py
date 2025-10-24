@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 class BookingCreate(BaseModel):
+    title: str
     user_id: int
     tour_id: int
     travel_date: datetime
@@ -27,6 +28,7 @@ class Booking(BaseModel):
     id: int
     user_id: int
     tour_id: int
+    title: str
     booking_date: datetime
     travel_date: datetime
     participants_count: int

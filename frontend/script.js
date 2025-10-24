@@ -278,6 +278,7 @@ async function bookTour(tourId) {
     
     // Создаем бронирование
     const bookingPayload = {
+      title: tour.title,
       user_id: currentUser.id,
       tour_id: parseInt(tourId),
       participants_count: 1,
@@ -579,6 +580,7 @@ function createBookingCard(b) {
     <div class="card booking-card ${b.status}">
       <h4>🎫 Бронь #${b.id}</h4>
       <div class="booking-info">
+        <div>🏨 Тур: ${b.title}</div>
         <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
         <div>👥 Участники: ${b.participants_count}</div>
         <div class="price">💰 Сумма: ${b.total_price} ₽</div>
