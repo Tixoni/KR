@@ -2,6 +2,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
@@ -43,11 +44,20 @@ async def get_current_user(
     
     return username
 
-# Health check endpoint
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "booking-service"}
-
+async def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    
+    return {
+        "status": "healthy" if db_status == "connected" else "unhealthy",
+        "service": "booking-service", 
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
 # Вспомогательная функция для получения цены тура
 async def get_tour_price(tour_id: int) -> Decimal:
     """Получает цену тура из tours-service"""

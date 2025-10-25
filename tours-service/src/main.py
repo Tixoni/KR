@@ -2,7 +2,9 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
+from datetime import datetime
 
 # Импорты для работы в контейнере
 from .models import Tour as TourModel  # Модель из models.py
@@ -36,10 +38,20 @@ async def get_current_user(
     
     return username
 
-# Health check endpoint
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "tours-service"}
+async def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    
+    return {
+        "status": "healthy" if db_status == "connected" else "unhealthy",
+        "service": "tours-service",  
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 # Get all tours
 @app.get("/tours", response_model=List[TourSchema])

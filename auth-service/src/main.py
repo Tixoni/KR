@@ -1,4 +1,7 @@
 # auth-service/src/main.py
+import time
+from datetime import datetime
+from sqlalchemy import text
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -48,10 +51,27 @@ async def get_current_user(
         raise credentials_exception
     return user
 
-# Health check endpoint
+
+
+
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "auth-service"}
+async def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    
+    return {
+        "status": "healthy" if db_status == "connected" else "unhealthy",
+        "service": "auth-service",  
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+
+
 
 # Регистрация (остается публичной)
 @app.post("/users", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)

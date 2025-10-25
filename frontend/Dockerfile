@@ -5,6 +5,9 @@ COPY index.html /usr/share/nginx/html/index.html
 COPY styles.css /usr/share/nginx/html/styles.css
 COPY script.js /usr/share/nginx/html/script.js
 
+# Alpine Linux использует apk вместо apt-get
+RUN apk update && apk add --no-cache curl
+
 EXPOSE 80
 
-
+CMD ["nginx", "-g", "daemon off;"]
