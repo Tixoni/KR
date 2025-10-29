@@ -45,9 +45,10 @@ async def get_current_user(
     return username
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+async def health_check():
     try:
-        db.execute(text("SELECT 1"))
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
