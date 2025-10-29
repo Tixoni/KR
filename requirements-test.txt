@@ -7,6 +7,11 @@ uvicorn==0.30.1
 sqlalchemy==2.0.40
 bcrypt==3.2.2
 
+# Explicit runtime deps to avoid import errors in CI
+pydantic==2.8.2
+starlette==0.37.2
+greenlet==3.0.3
+
 pytest-cov==4.1.0
 pytest-mock==3.11.1
 pytest-xdist==3.3.1
