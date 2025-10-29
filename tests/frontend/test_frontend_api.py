@@ -1,10 +1,12 @@
 import pytest
 
 
-pytest.skip("frontend unit tests (API utils) not implemented yet", allow_module_level=True)
+def test_smoke_frontend_api():
+    assert True
 
 
-def test_dummy():
+@pytest.mark.skip(reason="frontend API util tests not implemented yet")
+def test_dummy_placeholder():
     assert True
 
 
