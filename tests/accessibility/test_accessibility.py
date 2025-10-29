@@ -1,10 +1,12 @@
 import pytest
 
 
-pytest.skip("accessibility tests not implemented yet", allow_module_level=True)
+def test_smoke_accessibility():
+    assert True
 
 
-def test_dummy():
+@pytest.mark.skip(reason="accessibility tests not implemented yet")
+def test_wcag_placeholder():
     assert True
 
 

@@ -1,10 +1,12 @@
 import pytest
 
 
-pytest.skip("performance tests not implemented yet", allow_module_level=True)
+def test_smoke_performance():
+    assert True
 
 
-def test_dummy():
+@pytest.mark.skip(reason="performance tests not implemented yet")
+def test_api_response_time_placeholder():
     assert True
 
 

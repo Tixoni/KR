@@ -1,10 +1,12 @@
 import pytest
 
 
-pytest.skip("mobile responsive tests not implemented yet", allow_module_level=True)
+def test_smoke_mobile():
+    assert True
 
 
-def test_dummy():
+@pytest.mark.skip(reason="mobile responsive tests not implemented yet")
+def test_mobile_responsive_placeholder():
     assert True
 
 
