@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tourism_test_net
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+    networks:
+      - tourism_test_net
+
+  tours-service:
+    build:
+      context: ./tours-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
+    depends_on:
+      - postgres
+    ports:
+      - "8001:8001"
+    networks:
+      - tourism_test_net
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
+      AUTH_SERVICE_URL: "http://auth-service:8000"
+      TOURS_SERVICE_URL: "http://tours-service:8001"
+    depends_on:
+      - postgres
+      - auth-service
+      - tours-service
+    ports:
+      - "8002:8002"
+    networks:
+      - tourism_test_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - auth-service
+      - tours-service
+      - booking-service
+    ports:
+      - "8080:80"
+    networks:
+      - tourism_test_net
+
+volumes:
+  postgres_test_data:
+
+networks:
+  tourism_test_net:
+    driver: bridge
+
+
