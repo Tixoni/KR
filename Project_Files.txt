@@ -1,3 +1,17 @@
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\requirements-test.txt]
+[Размер: 109 байт]
+[Дата изменения: 2025-10-29 11:53:32.954660]
+
+pytest==8.2.1
+pytest-asyncio==0.23.8
+requests==2.32.3
+httpx==0.27.2
+fastapi==0.111.0
+uvicorn==0.30.1
+
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\auth-service\requirements.txt]
 [Размер: 189 байт]
 [Дата изменения: 2025-10-21 13:35:43.013997]
@@ -2010,6 +2024,52 @@ if __name__ == '__main__':
     sys.exit(main())
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\integration_test.py]
+[Размер: 1296 байт]
+[Дата изменения: 2025-10-29 11:53:32.954660]
+
+import os
+import time
+import requests
+
+
+BASE_AUTH = os.getenv("AUTH_BASE_URL", "http://localhost:8000")
+BASE_TOURS = os.getenv("TOURS_BASE_URL", "http://localhost:8001")
+BASE_BOOKING = os.getenv("BOOKING_BASE_URL", "http://localhost:8002")
+
+
+def wait_for_service(url: str, timeout_seconds: int = 60) -> None:
+    start = time.time()
+    last_error = None
+    while time.time() - start < timeout_seconds:
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                return
+            last_error = f"HTTP {r.status_code}"
+        except Exception as e:  # noqa: BLE001 - simple polling helper
+            last_error = str(e)
+        time.sleep(2)
+    raise AssertionError(f"Service {url} did not become healthy in time: {last_error}")
+
+
+def test_health_endpoints_up():
+    wait_for_service(f"{BASE_AUTH}/health")
+    wait_for_service(f"{BASE_TOURS}/health")
+    wait_for_service(f"{BASE_BOOKING}/health")
+
+    a = requests.get(f"{BASE_AUTH}/health").json()
+    t = requests.get(f"{BASE_TOURS}/health").json()
+    b = requests.get(f"{BASE_BOOKING}/health").json()
+
+    assert a.get("service") == "auth-service"
+    assert t.get("service") == "tours-service"
+    assert b.get("service") == "booking-service"
+
+
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\auth-service\health_check.py]
 [Размер: 956 байт]
 [Дата изменения: 2025-10-24 20:41:23.612410]
@@ -2392,6 +2452,36 @@ class TokenData(BaseModel):
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\auth-service\src\__init__.py]
 [Размер: 0 байт]
 [Дата изменения: 2025-10-21 13:35:43.035422]
+
+
+-----
+
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\auth-service\src\test\test_basic.py]
+[Размер: 0 байт]
+[Дата изменения: 2025-10-29 11:53:50.754077]
+
+
+-----
+
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\auth-service\test\test_basic.py]
+[Размер: 397 байт]
+[Дата изменения: 2025-10-29 11:53:32.954660]
+
+from fastapi.testclient import TestClient
+
+from src import main as app_main  # type: ignore
+
+
+client = TestClient(app_main.app)
+
+
+def test_health_endpoint_returns_ok():
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("service") == "auth-service"
+    assert body.get("status") in {"healthy", "unhealthy"}
+
 
 
 -----
@@ -2974,6 +3064,29 @@ class BookingStats(BaseModel):
 
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\booking-service\test\test_basic.py]
+[Размер: 400 байт]
+[Дата изменения: 2025-10-29 11:53:32.954660]
+
+from fastapi.testclient import TestClient
+
+from src import main as app_main  # type: ignore
+
+
+client = TestClient(app_main.app)
+
+
+def test_health_endpoint_returns_ok():
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("service") == "booking-service"
+    assert body.get("status") in {"healthy", "unhealthy"}
+
+
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\health_check.py]
 [Размер: 963 байт]
 [Дата изменения: 2025-10-24 22:35:36.217740]
@@ -3346,9 +3459,38 @@ class Tour(BaseModel):
 
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\test\test_basic.py]
+[Размер: 556 байт]
+[Дата изменения: 2025-10-29 11:53:32.952662]
+
+from fastapi.testclient import TestClient
+
+from src import main as app_main  # type: ignore
+
+
+client = TestClient(app_main.app)
+
+
+def test_health_endpoint_returns_ok():
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("service") == "tours-service"
+    assert body.get("status") in {"healthy", "unhealthy"}
+
+
+def test_get_tours_list_ok():
+    response = client.get("/tours")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\README-SCRIPTS.md]
-[Размер: 8350 байт]
-[Дата изменения: 2025-10-24 22:40:01.150423]
+[Размер: 8405 байт]
+[Дата изменения: 2025-10-29 11:30:21.076479]
 
 # Tourism Platform - Docker Swarm Management Scripts
 
@@ -3371,8 +3513,8 @@ class Tour(BaseModel):
 
 ### Основные скрипты
 
-| Скрипт | Описание | Использование |
-|--------|----------|---------------|
+| Скрипт            | Описание |                 Использование |
+|-------------------|----------|--------------------------------|
 | `manage-swarm.sh` | Главный скрипт управления | `./manage-swarm.sh [command]` |
 | `start-swarm.sh` | Быстрый запуск | `./start-swarm.sh` |
 | `stop-swarm.sh` | Быстрая остановка | `./stop-swarm.sh` |
@@ -3741,6 +3883,101 @@ CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 CREATE INDEX IF NOT EXISTS idx_bookings_payment_status ON bookings(payment_status);
 CREATE INDEX IF NOT EXISTS idx_bookings_travel_date ON bookings(travel_date);
 CREATE INDEX IF NOT EXISTS idx_bookings_booking_date ON bookings(booking_date);
+-----
+
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\docker-compose.test.yml]
+[Размер: 2108 байт]
+[Дата изменения: 2025-10-29 11:53:32.954660]
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tourism_test_net
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+    networks:
+      - tourism_test_net
+
+  tours-service:
+    build:
+      context: ./tours-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
+    depends_on:
+      - postgres
+    ports:
+      - "8001:8001"
+    networks:
+      - tourism_test_net
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    environment:
+      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
+      JWT_ALGORITHM: "HS256"
+      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
+      AUTH_SERVICE_URL: "http://auth-service:8000"
+      TOURS_SERVICE_URL: "http://tours-service:8001"
+    depends_on:
+      - postgres
+      - auth-service
+      - tours-service
+    ports:
+      - "8002:8002"
+    networks:
+      - tourism_test_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - auth-service
+      - tours-service
+      - booking-service
+    ports:
+      - "8080:80"
+    networks:
+      - tourism_test_net
+
+volumes:
+  postgres_test_data:
+
+networks:
+  tourism_test_net:
+    driver: bridge
+
+
+
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\docker-compose.yml]
