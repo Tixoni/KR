@@ -30,15 +30,15 @@ jobs:
           pip install -r requirements-test.txt
 
       - name: Run auth-service tests
-        working-directory: src/auth-service
+        working-directory: auth-service
         run: pytest -q
 
       - name: Run tours-service tests
-        working-directory: src/tours-service
+        working-directory: tours-service
         run: pytest -q
 
       - name: Run booking-service tests
-        working-directory: src/booking-service
+        working-directory: booking-service
         run: pytest -q
 
   integration-tests:
