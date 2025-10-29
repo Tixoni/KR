@@ -1,10 +1,12 @@
 import pytest
 
 
-pytest.skip("backend integration tests to be implemented (compose-based)", allow_module_level=True)
+def test_smoke_backend_integration_placeholder():
+    assert True
 
 
-def test_dummy():
+@pytest.mark.skip(reason="backend integration tests to be implemented (compose-based)")
+def test_service_communication_placeholder():
     assert True
 
 
