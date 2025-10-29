@@ -31,14 +31,20 @@ jobs:
 
       - name: Run auth-service tests
         working-directory: auth-service
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
       - name: Run tours-service tests
         working-directory: tours-service
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
       - name: Run booking-service tests
         working-directory: booking-service
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
   integration-tests:

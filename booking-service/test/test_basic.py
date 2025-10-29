@@ -1,9 +1,13 @@
+import sys
+import os
 from fastapi.testclient import TestClient
 
-from src import main as app_main  # type: ignore
+# Добавляем путь к src для корректного импорта
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+from src.main import app
 
-client = TestClient(app_main.app)
+client = TestClient(app)
 
 
 def test_health_endpoint_returns_ok():
