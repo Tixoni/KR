@@ -22,6 +22,6 @@ pytest-json-report==1.5.0
 # Добавьте эти зависимости для auth-service
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.0
-python-multipart==0.0.6
+python-multipart==0.0.7
 email-validator==2.1.0
 psycopg2-binary==2.9.9
