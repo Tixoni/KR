@@ -96,20 +96,61 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and start test stack
+      - name: Set up kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.24.0
+          cluster_name: tourism-ci
+
+      - name: Build Docker images
         run: |
-          docker compose -f docker-compose.test.yml up -d --build
+          docker build -t tourism-platform-auth-service:latest ./auth-service
+          docker build -t tourism-platform-tours-service:latest ./tours-service
+          docker build -t tourism-platform-booking-service:latest ./booking-service
+          docker build -t tourism-platform-frontend:latest ./frontend
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image tourism-platform-auth-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-tours-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-booking-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-frontend:latest --name tourism-ci
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/postgres.yaml
+          kubectl apply -f k8s/services-backend.yaml
+          kubectl apply -f k8s/frontend.yaml
+
+      - name: Wait for pods ready
+        run: |
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/frontend
+          kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
+
+      - name: Port-forward frontend
+        run: |
+          kubectl -n tourism port-forward deploy/frontend 8080:80 &
+          echo $! > pf.pid
+          sleep 5
 
       - name: Run integration tests
         env:
-          AUTH_BASE_URL: http://localhost:8000
-          TOURS_BASE_URL: http://localhost:8001
-          BOOKING_BASE_URL: http://localhost:8002
+          BASE_URL: http://localhost:8080
+          AUTH_BASE_URL: http://localhost:8080/api/auth
+          TOURS_BASE_URL: http://localhost:8080/api/tours
+          BOOKING_BASE_URL: http://localhost:8080/api/booking
         run: pytest -q -n auto integration_test.py
 
-      - name: Teardown
+      - name: Teardown port-forward
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v
+        run: |
+          kill $(cat pf.pid) || true
 
   backend-integration-tests:
     runs-on: ubuntu-latest
