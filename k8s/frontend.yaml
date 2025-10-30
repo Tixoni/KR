@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: tourism
+spec:
+  selector:
+    app: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: tourism
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: tourism-platform-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tourism-ingress
+  namespace: tourism
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+  - host: tourism.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
+      - path: /api/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 8000
+      - path: /api/tours
+        pathType: Prefix
+        backend:
+          service:
+            name: tours-service
+            port:
+              number: 8001
+      - path: /api/booking
+        pathType: Prefix
+        backend:
+          service:
+            name: booking-service
+            port:
+              number: 8002
