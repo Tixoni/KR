@@ -72,6 +72,41 @@ python-dotenv==1.0.0
 python-jose[cryptography]==3.3.0
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\apply-all.bat]
+[Размер: 419 байт]
+[Дата изменения: 2025-10-30 20:33:44.850263]
+
+@echo off
+setlocal enabledelayedexpansion
+kubectl apply -f k8s\namespace.yaml || goto :error
+kubectl apply -f k8s\secrets.yaml || goto :error
+kubectl apply -f k8s\configmap.yaml || goto :error
+kubectl apply -f k8s\postgres.yaml || goto :error
+kubectl apply -f k8s\services-backend.yaml || goto :error
+kubectl apply -f k8s\frontend.yaml || goto :error
+
+echo Done.
+exit /b 0
+
+:error
+echo Failed.
+exit /b 1
+
+-----
+
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\apply-all.ps1]
+[Размер: 345 байт]
+[Дата изменения: 2025-10-30 20:21:15.666924]
+
+kubectl apply -f "$(Resolve-Path ./k8s/namespace.yaml)"
+kubectl apply -f "$(Resolve-Path ./k8s/secrets.yaml)"
+kubectl apply -f "$(Resolve-Path ./k8s/configmap.yaml)"
+kubectl apply -f "$(Resolve-Path ./k8s/postgres.yaml)"
+kubectl apply -f "$(Resolve-Path ./k8s/services-backend.yaml)"
+kubectl apply -f "$(Resolve-Path ./k8s/frontend.yaml)"
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\frontend\script.js]
 [Размер: 38809 байт]
 [Дата изменения: 2025-10-24 13:29:41.008735]
@@ -4197,6 +4232,40 @@ tail -f cleanup.log
 
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\README.md]
+[Размер: 857 байт]
+[Дата изменения: 2025-10-30 20:21:12.723431]
+
+# Kubernetes (k3s) deployment
+
+## Prerequisites
+- k3s or any Kubernetes cluster
+- kubectl configured to the cluster
+
+## Apply manifests
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secrets.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/services-backend.yaml
+kubectl apply -f k8s/frontend.yaml
+```
+
+## Access
+- Configure DNS or hosts entry to point `tourism.local` to your node IP.
+- k3s ships with Traefik; Ingress `tourism-ingress` exposes the app.
+
+## Notes
+- Images are referenced as `:latest`. Build and push to a registry accessible by the cluster, or use k3s local image import:
+```bash
+# example (Linux host)
+docker build -t tourism-platform-auth-service:latest auth-service
+k3s ctr images import <(docker save tourism-platform-auth-service:latest)
+```
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\infrastructure\init.sql]
 [Размер: 2543 байт]
 [Дата изменения: 2025-10-24 13:32:08.645055]
@@ -4268,420 +4337,515 @@ CREATE INDEX IF NOT EXISTS idx_bookings_travel_date ON bookings(travel_date);
 CREATE INDEX IF NOT EXISTS idx_bookings_booking_date ON bookings(booking_date);
 -----
 
-[Файл: C:\Users\Тихон\Desktop\tourism-platform\docker-compose.test.yml]
-[Размер: 2108 байт]
-[Дата изменения: 2025-10-29 11:53:32.954660]
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\configmap.yaml]
+[Размер: 2958 байт]
+[Дата изменения: 2025-10-30 20:19:46.954667]
 
-version: '3.8'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  namespace: tourism
+data:
+  INIT_SQL: |
+    -- infrastructure/init.sql
+    -- Создаем базы данных
+    CREATE DATABASE auth_db;
+    CREATE DATABASE tours_db;
+    CREATE DATABASE booking_db;
 
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - tourism_test_net
+    -- auth_db (аутентификация + профили пользователей)
+    \c auth_db;
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        phone VARCHAR(20),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-    environment:
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
-    depends_on:
-      - postgres
-    ports:
-      - "8000:8000"
-    networks:
-      - tourism_test_net
+    -- tours_db (туры)
+    \c tours_db;
+    CREATE TABLE IF NOT EXISTS tours (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        description TEXT,
+        destination VARCHAR(100) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        duration_days INTEGER NOT NULL,
+        available BOOLEAN DEFAULT true,
+        features TEXT[],
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-  tours-service:
-    build:
-      context: ./tours-service
-      dockerfile: Dockerfile
-    environment:
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
-    depends_on:
-      - postgres
-    ports:
-      - "8001:8001"
-    networks:
-      - tourism_test_net
+    -- booking_db (бронирования)
+    \c booking_db;
 
-  booking-service:
-    build:
-      context: ./booking-service
-      dockerfile: Dockerfile
-    environment:
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
-      AUTH_SERVICE_URL: "http://auth-service:8000"
-      TOURS_SERVICE_URL: "http://tours-service:8001"
-    depends_on:
-      - postgres
-      - auth-service
-      - tours-service
-    ports:
-      - "8002:8002"
-    networks:
-      - tourism_test_net
+    -- Создаем ENUM типы для статусов
+    CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
+    CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'refunded');
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    depends_on:
-      - auth-service
-      - tours-service
-      - booking-service
-    ports:
-      - "8080:80"
-    networks:
-      - tourism_test_net
+    CREATE TABLE IF NOT EXISTS bookings (
+        title VARCHAR(200) NOT NULL,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        tour_id INTEGER NOT NULL,
+        booking_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        travel_date TIMESTAMP WITH TIME ZONE NOT NULL,
+        participants_count INTEGER NOT NULL DEFAULT 1 CHECK (participants_count > 0 AND participants_count <= 20),
+        total_price DECIMAL(10,2) NOT NULL CHECK (total_price >= 0),
+        status booking_status DEFAULT 'pending',
+        payment_status payment_status DEFAULT 'pending',
+        special_requests TEXT,
+        contact_phone VARCHAR(20),
+        contact_email VARCHAR(100),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
 
-volumes:
-  postgres_test_data:
-
-networks:
-  tourism_test_net:
-    driver: bridge
-
-
+    -- Создаем индексы для оптимизации запросов
+    CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_tour_id ON bookings(tour_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    CREATE INDEX IF NOT EXISTS idx_bookings_payment_status ON bookings(payment_status);
+    CREATE INDEX IF NOT EXISTS idx_bookings_travel_date ON bookings(travel_date);
+    CREATE INDEX IF NOT EXISTS idx_bookings_booking_date ON bookings(booking_date);
 
 -----
 
-[Файл: C:\Users\Тихон\Desktop\tourism-platform\docker-compose.yml]
-[Размер: 2403 байт]
-[Дата изменения: 2025-10-21 13:55:05.045075]
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\frontend.yaml]
+[Размер: 1827 байт]
+[Дата изменения: 2025-10-30 20:19:46.954667]
 
-version: '3.8'
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: tourism
+spec:
+  selector:
+    app: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: tourism
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: tourism-platform-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tourism-ingress
+  namespace: tourism
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+  - host: tourism.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
+      - path: /api/auth
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 8000
+      - path: /api/tours
+        pathType: Prefix
+        backend:
+          service:
+            name: tours-service
+            port:
+              number: 8001
+      - path: /api/booking
+        pathType: Prefix
+        backend:
+          service:
+            name: booking-service
+            port:
+              number: 8002
 
-services:
-  postgres:
-    image: postgres:15
-    container_name: tourism_postgres
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - tourism_network
-
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-    container_name: tourism_auth_service
-    environment:
-      # секрет должен совпадать у всех сервисов, кто валидирует токены
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      # внутри сети compose используем хост postgres
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-    networks:
-      - tourism_network
-
-  tours-service:
-    build:
-      context: ./tours-service
-      dockerfile: Dockerfile
-    container_name: tourism_tours_service
-    environment:
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-    ports:
-      - "8001:8001"
-    depends_on:
-      - postgres
-    networks:
-      - tourism_network
-
-  booking-service:
-    build:
-      context: ./booking-service
-      dockerfile: Dockerfile
-    container_name: tourism_booking_service
-    environment:
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      AUTH_SERVICE_URL: "http://auth-service:8000"
-      TOURS_SERVICE_URL: "http://tours-service:8001"
-    ports:
-      - "8002:8002"
-    depends_on:
-      - postgres
-      - auth-service
-      - tours-service
-    networks:
-      - tourism_network
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: tourism_frontend
-    ports:
-      - "8080:80"
-    depends_on:
-      - auth-service
-      - tours-service
-      - booking-service
-    networks:
-      - tourism_network
-
-volumes:
-  postgres_data:
-
-networks:
-  tourism_network:
-    driver: bridge
 -----
 
-[Файл: C:\Users\Тихон\Desktop\tourism-platform\docker-stack.yml]
-[Размер: 5444 байт]
-[Дата изменения: 2025-10-27 07:59:11.628950]
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\namespace.yaml]
+[Размер: 61 байт]
+[Дата изменения: 2025-10-30 20:25:49.134738]
 
-version: '3.8'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tourism
 
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - tourism_network
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.role == manager]
-      restart_policy:
-        condition: on-failure
-        delay: 15s
-        max_attempts: 3
-        window: 300s
-      update_config:
-        parallelism: 1
-        delay: 30s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: pause
+-----
+
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\postgres.yaml]
+[Размер: 1632 байт]
+[Дата изменения: 2025-10-30 20:19:46.954667]
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: tourism
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: postgres
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: tourism
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_DB
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: init-sql
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: init-sql
+        projected:
+          sources:
+          - configMap:
+              name: platform-config
+              items:
+              - key: INIT_SQL
+                path: init.sql
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
       resources:
-        limits:
-          memory: 1G
-          cpus: '0.5'
-        reservations:
-          memory: 512M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
+        requests:
+          storage: 5Gi
 
-  auth-service:
-    image: tourism-platform-auth-service:latest
-    environment:
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/auth_db"
-      HEALTH_CHECK_HOST: "localhost"
-    ports:
-      - "8000:8000"
-    networks:
-      - tourism_network
-    deploy:
-      replicas: 3
-      restart_policy:
-        condition: on-failure
-        delay: 15s
-        max_attempts: 3
-        window: 300s
-      update_config:
-        parallelism: 1
-        delay: 20s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: pause
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+-----
 
-  tours-service:
-    image: tourism-platform-tours-service:latest
-    environment:
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/tours_db"
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      HEALTH_CHECK_HOST: "localhost"
-    ports:
-      - "8001:8001"
-    networks:
-      - tourism_network
-    deploy:
-      replicas: 3
-      restart_policy:
-        condition: on-failure
-        delay: 15s
-        max_attempts: 3
-        window: 300s
-      update_config:
-        parallelism: 1
-        delay: 20s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: pause
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\secrets.yaml]
+[Размер: 349 байт]
+[Дата изменения: 2025-10-30 20:19:46.952899]
 
-  booking-service:
-    image: tourism-platform-booking-service:latest
-    environment:
-      DATABASE_URL: "postgresql://admin:password@postgres:5432/booking_db"
-      SECRET_KEY: "tourism-platform-secret-key-2024-production-ready"
-      JWT_ALGORITHM: "HS256"
-      AUTH_SERVICE_URL: "http://auth-service:8000"
-      TOURS_SERVICE_URL: "http://tours-service:8001"
-      HEALTH_CHECK_HOST: "localhost"
-    ports:
-      - "8002:8002"
-    networks:
-      - tourism_network
-    deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
-        delay: 20s
-        max_attempts: 3
-        window: 300s
-      update_config:
-        parallelism: 1
-        delay: 25s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: pause
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
+apiVersion: v1
+kind: Secret
+metadata:
+  name: platform-secrets
+  namespace: tourism
+type: Opaque
+data:
+  POSTGRES_USER: YWRtaW4=
+  POSTGRES_PASSWORD: cGFzc3dvcmQ=
+  POSTGRES_DB: cG9zdGdyZXM=
+  SECRET_KEY: dG91cmlzbS1wbGF0Zm9ybS1zZWNyZXQta2V5LTIwMjQtcHJvZHVjdGlvbi1yZWFkeQ==
+  JWT_ALGORITHM: SFMyNTY=
+  ACCESS_TOKEN_EXPIRE_MINUTES: MzA=
 
-  frontend:
-    image: tourism-platform-frontend:latest
-    ports:
-      - "8080:80"
-    networks:
-      - tourism_network
-    deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 3
-        window: 300s
-      update_config:
-        parallelism: 2
-        delay: 10s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
-        delay: 5s
-        failure_action: pause
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 128M
-          cpus: '0.1'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+-----
 
-volumes:
-  postgres_data:
-    driver: local
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\services-backend.yaml]
+[Размер: 5590 байт]
+[Дата изменения: 2025-10-30 20:19:46.954667]
 
-networks:
-  tourism_network:
-    driver: overlay
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: tourism
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: tourism
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: tourism-platform-auth-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: SECRET_KEY
+        - name: JWT_ALGORITHM
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: JWT_ALGORITHM
+        - name: ACCESS_TOKEN_EXPIRE_MINUTES
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: ACCESS_TOKEN_EXPIRE_MINUTES
+        - name: DATABASE_URL
+          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/auth_db
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_PASSWORD
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 20
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tours-service
+  namespace: tourism
+spec:
+  selector:
+    app: tours-service
+  ports:
+  - name: http
+    port: 8001
+    targetPort: 8001
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tours-service
+  namespace: tourism
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tours-service
+  template:
+    metadata:
+      labels:
+        app: tours-service
+    spec:
+      containers:
+      - name: tours-service
+        image: tourism-platform-tours-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8001
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: SECRET_KEY
+        - name: JWT_ALGORITHM
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: JWT_ALGORITHM
+        - name: DATABASE_URL
+          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/tours_db
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_PASSWORD
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 20
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: tourism
+spec:
+  selector:
+    app: booking-service
+  ports:
+  - name: http
+    port: 8002
+    targetPort: 8002
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+  namespace: tourism
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: booking-service
+  template:
+    metadata:
+      labels:
+        app: booking-service
+    spec:
+      containers:
+      - name: booking-service
+        image: tourism-platform-booking-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8002
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: SECRET_KEY
+        - name: JWT_ALGORITHM
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: JWT_ALGORITHM
+        - name: DATABASE_URL
+          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/booking_db
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: POSTGRES_PASSWORD
+        - name: AUTH_SERVICE_URL
+          value: http://auth-service.tourism.svc.cluster.local:8000
+        - name: TOURS_SERVICE_URL
+          value: http://tours-service.tourism.svc.cluster.local:8001
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 20
+          periodSeconds: 20
+
 -----
 

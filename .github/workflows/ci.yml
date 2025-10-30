@@ -130,27 +130,31 @@ jobs:
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
-          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/frontend
           kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
 
-      - name: Port-forward frontend
+      - name: Port-forward services
         run: |
-          kubectl -n tourism port-forward deploy/frontend 8080:80 &
-          echo $! > pf.pid
+          kubectl -n tourism port-forward deploy/auth-service 8000:8000 &
+          echo $! > pf-auth.pid
+          kubectl -n tourism port-forward deploy/tours-service 8001:8001 &
+          echo $! > pf-tours.pid
+          kubectl -n tourism port-forward deploy/booking-service 8002:8002 &
+          echo $! > pf-booking.pid
           sleep 5
 
       - name: Run integration tests
         env:
-          BASE_URL: http://localhost:8080
-          AUTH_BASE_URL: http://localhost:8080/api/auth
-          TOURS_BASE_URL: http://localhost:8080/api/tours
-          BOOKING_BASE_URL: http://localhost:8080/api/booking
+          AUTH_BASE_URL: http://localhost:8000
+          TOURS_BASE_URL: http://localhost:8001
+          BOOKING_BASE_URL: http://localhost:8002
         run: pytest -q -n auto integration_test.py
 
       - name: Teardown port-forward
         if: always()
         run: |
-          kill $(cat pf.pid) || true
+          kill $(cat pf-auth.pid) || true
+          kill $(cat pf-tours.pid) || true
+          kill $(cat pf-booking.pid) || true
 
   backend-integration-tests:
     runs-on: ubuntu-latest
