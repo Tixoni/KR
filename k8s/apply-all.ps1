@@ -1,6 +1,0 @@
-kubectl apply -f "$(Resolve-Path ./k8s/namespace.yaml)"
-kubectl apply -f "$(Resolve-Path ./k8s/secrets.yaml)"
-kubectl apply -f "$(Resolve-Path ./k8s/configmap.yaml)"
-kubectl apply -f "$(Resolve-Path ./k8s/postgres.yaml)"
-kubectl apply -f "$(Resolve-Path ./k8s/services-backend.yaml)"
-kubectl apply -f "$(Resolve-Path ./k8s/frontend.yaml)"

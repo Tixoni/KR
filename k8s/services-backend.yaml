@@ -50,7 +50,7 @@ spec:
               name: platform-secrets
               key: ACCESS_TOKEN_EXPIRE_MINUTES
         - name: DATABASE_URL
-          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/auth_db
+          value: "postgresql://admin:password@postgres:5432/auth_db"
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
@@ -121,7 +121,7 @@ spec:
               name: platform-secrets
               key: JWT_ALGORITHM
         - name: DATABASE_URL
-          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/tours_db
+          value: "postgresql://admin:password@postgres:5432/tours_db"
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
@@ -192,7 +192,7 @@ spec:
               name: platform-secrets
               key: JWT_ALGORITHM
         - name: DATABASE_URL
-          value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/booking_db
+          value: "postgresql://admin:password@postgres:5432/booking_db"
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
