@@ -3,19 +3,19 @@ chcp 65001 >nul
 echo Starting Tourism Platform...
 
 echo 1. Applying Kubernetes manifests...
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/namespace.yaml --validate=false
+kubectl apply -f k8s/secrets.yaml --validate=false
+kubectl apply -f k8s/configmap.yaml --validate=false
+kubectl apply -f k8s/postgres.yaml --validate=false
 
 echo 2. Waiting for database to be ready...
 timeout /t 25 /nobreak >nul
 
 echo 3. Starting backend services...
-kubectl apply -f k8s/services-backend.yaml
+kubectl apply -f k8s/services-backend.yaml --validate=false
 
 echo 4. Starting frontend...
-kubectl apply -f k8s/frontend.yaml
+kubectl apply -f k8s/frontend.yaml --validate=false
 
 echo 5. Waiting for services to be ready...
 timeout /t 30 /nobreak >nul
