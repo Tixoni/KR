@@ -66,7 +66,6 @@ if not exist "auth-service\Dockerfile" (
       echo COPY requirements.txt .
       echo RUN pip install --no-cache-dir -r requirements.txt
       echo COPY src/ ./src/
-      echo COPY health_check.py .
       echo.
       echo CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
     )> auth-service\Dockerfile
@@ -84,7 +83,6 @@ if not exist "tours-service\Dockerfile" (
       echo COPY requirements.txt .
       echo RUN pip install --no-cache-dir -r requirements.txt
       echo COPY src/ ./src/
-      echo COPY health_check.py .
       echo.
       echo CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
     )> tours-service\Dockerfile
@@ -102,7 +100,6 @@ if not exist "booking-service\Dockerfile" (
       echo COPY requirements.txt .
       echo RUN pip install --no-cache-dir -r requirements.txt
       echo COPY src/ ./src/
-      echo COPY health_check.py .
       echo.
       echo CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8002"]
     )> booking-service\Dockerfile
@@ -123,6 +120,20 @@ if not exist "frontend\Dockerfile" (
       echo.
       echo CMD ["nginx", "-g", "daemon off;"]
     )> frontend\Dockerfile
+)
+
+if not exist "gateway-service\Dockerfile" (
+    echo Creating Dockerfile for gateway-service...
+    (
+      echo FROM nginx:1.25-alpine
+      echo.
+      echo COPY nginx.conf /etc/nginx/nginx.conf
+      echo RUN mkdir -p /var/log/nginx
+      echo.
+      echo EXPOSE 8080
+      echo.
+      echo CMD ["nginx", "-g", "daemon off;"]
+    )> gateway-service\Dockerfile
 )
 
 echo.
@@ -168,6 +179,17 @@ if errorlevel 1 (
     echo Using fallback Nginx image...
     docker pull nginx:alpine
     docker tag nginx:alpine tourism-platform-frontend:latest
+)
+
+echo 🏗️ Building gateway-service...
+pushd gateway-service
+docker build -t tourism-platform-gateway:latest .
+popd
+if errorlevel 1 (
+    echo ❌ Failed to build gateway image!
+    echo Using fallback Nginx image...
+    docker pull nginx:alpine
+    docker tag nginx:alpine tourism-platform-gateway:latest
 )
 
 echo.
@@ -304,6 +326,7 @@ echo Waiting for PostgreSQL to be ready...
 timeout /t 30 /nobreak >nul
 
 kubectl apply -f k8s/services-backend.yaml --validate=false
+kubectl apply -f k8s/gateway.yaml --validate=false
 kubectl apply -f k8s/frontend.yaml --validate=false
 
 echo Waiting for ALL services to be ready...
@@ -349,6 +372,12 @@ echo Building Docker images silently...
   docker pull nginx:alpine >nul 2>&1
   docker tag nginx:alpine tourism-platform-frontend:latest >nul 2>&1
 )
+(
+  pushd gateway-service && docker build -t tourism-platform-gateway:latest . && popd
+) >nul 2>&1 || (
+  docker pull nginx:alpine >nul 2>&1
+  docker tag nginx:alpine tourism-platform-gateway:latest >nul 2>&1
+)
 
 goto :eof
 
@@ -363,6 +392,8 @@ echo Importing booking-service...
 k3d image import tourism-platform-booking-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import booking-service image
 echo Importing frontend...
 k3d image import tourism-platform-frontend:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import frontend image
+echo Importing gateway...
+k3d image import tourism-platform-gateway:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import gateway image
 echo.
 echo ✅ Images import completed!
 goto :eof
@@ -383,6 +414,7 @@ if errorlevel 1 (
 )
 
 kubectl delete -f k8s/frontend.yaml --ignore-not-found=true
+kubectl delete -f k8s/gateway.yaml --ignore-not-found=true
 kubectl delete -f k8s/services-backend.yaml --ignore-not-found=true
 kubectl delete -f k8s/postgres.yaml --ignore-not-found=true
 echo.
@@ -427,9 +459,10 @@ echo 2. Auth Service
 echo 3. Tours Service
 echo 4. Booking Service
 echo 5. Frontend
-echo 6. Back to Main Menu
+echo 6. Gateway
+echo 7. Back to Main Menu
 echo.
-set /p LOG_CHOICE="Choose service [1-6]: "
+set /p LOG_CHOICE="Choose service [1-7]: "
 
 if "%LOG_CHOICE%"=="1" (
     echo PostgreSQL Logs:
@@ -451,7 +484,11 @@ if "%LOG_CHOICE%"=="5" (
     echo Frontend Logs:
     kubectl logs -n %NAMESPACE% deployment/frontend --tail=50
 )
-if "%LOG_CHOICE%"=="6" goto MAIN_MENU
+if "%LOG_CHOICE%"=="6" (
+    echo Gateway Logs:
+    kubectl logs -n %NAMESPACE% deployment/gateway --tail=50
+)
+if "%LOG_CHOICE%"=="7" goto MAIN_MENU
 
 echo.
 pause
@@ -461,23 +498,18 @@ goto VIEW_LOGS
 echo.
 echo Starting Port Forward...
 echo Frontend: http://localhost:8081
-echo Auth API: http://localhost:8000/health
-echo Tours API: http://localhost:8001/health
-echo Booking API: http://localhost:8002/health
+echo Gateway API: http://localhost:8080/api/
 echo.
 echo Press Ctrl+C to stop port forwarding
 echo.
 
 start "" /B kubectl port-forward -n %NAMESPACE% service/frontend 8081:80
 timeout /t 2 /nobreak >nul
-start "" /B kubectl port-forward -n %NAMESPACE% service/auth-service 8000:8000
-timeout /t 2 /nobreak >nul
-start "" /B kubectl port-forward -n %NAMESPACE% service/tours-service 8001:8001
-timeout /t 2 /nobreak >nul
-start "" /B kubectl port-forward -n %NAMESPACE% service/booking-service 8002:8002
+start "" /B kubectl port-forward -n %NAMESPACE% service/gateway 8080:8080
 
 echo Port forwarding started in background windows
 echo Access the application at: http://localhost:8081
+echo All API calls go through gateway at: http://localhost:8080/api/
 echo.
 pause
 goto MAIN_MENU
@@ -503,6 +535,9 @@ kubectl get pods -n %NAMESPACE% -l app=booking-service --no-headers | find "Runn
 
 echo - Frontend: 
 kubectl get pods -n %NAMESPACE% -l app=frontend --no-headers | find "Running" >nul && echo OK || echo FAILED
+
+echo - Gateway: 
+kubectl get pods -n %NAMESPACE% -l app=gateway --no-headers | find "Running" >nul && echo OK || echo FAILED
 
 echo.
 pause

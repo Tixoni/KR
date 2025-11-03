@@ -680,6 +680,7 @@ async function login(e){
     
   const data = await res.json();
     if (data.access_token) {
+      lala_eagle.play(); // Воспроизводим звук при успешном входе
       setToken(data.access_token);
       document.getElementById('login-status').textContent = '✅ Успешно!';
       document.getElementById('login-status').className = 'status success';

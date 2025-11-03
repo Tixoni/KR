@@ -65,24 +65,10 @@ spec:
             name: frontend
             port:
               number: 80
-      - path: /api/auth
+      - path: /api
         pathType: Prefix
         backend:
           service:
-            name: auth-service
+            name: gateway
             port:
-              number: 8000
-      - path: /api/tours
-        pathType: Prefix
-        backend:
-          service:
-            name: tours-service
-            port:
-              number: 8001
-      - path: /api/booking
-        pathType: Prefix
-        backend:
-          service:
-            name: booking-service
-            port:
-              number: 8002
+              number: 8080
