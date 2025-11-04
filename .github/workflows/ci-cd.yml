@@ -1,0 +1,79 @@
+name: CD Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag and docker user
+        shell: bash
+        run: |
+          # Prefer explicit secrets; fallback to latest
+          if [[ -z "${{ secrets.IMAGE_TAG }}" ]]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ secrets.IMAGE_TAG }}" >> $GITHUB_ENV
+          fi
+          if [[ -z "${{ secrets.DOCKER_USERNAME }}" ]]; then
+            echo "DOCKER_USERNAME is required as a secret" >&2
+            exit 1
+          fi
+          echo "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Setup k3d cluster
+        uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: tourism-cluster
+          args: >-
+            --agents 1
+            --api-port 6445
+            --wait
+      
+      - name: Verify cluster context
+        run: |
+          kubectl config use-context k3d-tourism-cluster
+          kubectl get nodes -o wide
+
+      - name: Verify Docker images exist in Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          images=(
+            "tourism-platform-auth-service"
+            "tourism-platform-booking-service"
+            "tourism-platform-tours-service"
+            "tourism-platform-gateway"
+            "tourism-platform-frontend"
+          )
+          for img in "${images[@]}"; do
+            echo "Checking $DOCKER_USERNAME/$img:$IMAGE_TAG ..."
+            if ! docker manifest inspect "$DOCKER_USERNAME/$img:$IMAGE_TAG" > /dev/null 2>&1; then
+              echo "Image not found: $DOCKER_USERNAME/$img:$IMAGE_TAG" >&2
+              exit 1
+            fi
+          done
+
+      - name: Deploy manifests and set images
+        env:
+          DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        shell: bash
+        run: |
+          chmod +x k8s/deploy.sh
+          ./k8s/deploy.sh
+
+
