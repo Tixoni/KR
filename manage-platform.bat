@@ -4,6 +4,7 @@ setlocal EnableDelayedExpansion
 
 set NAMESPACE=tourism
 set PLATFORM_TITLE=Tourism Platform Manager
+set BUILD_FAILED=0
 
 :MAIN_MENU
 cls
@@ -198,9 +199,8 @@ echo.
 echo Current images:
 docker images | findstr "tourism-platform"
 echo.
-echo Do you want to import images to k3d cluster now? (y/N)
-set /p IMPORT_CHOICE="> "
-if /i "%IMPORT_CHOICE%"=="y" (
+set /p IMPORT_CHOICE="Do you want to import images to k3d cluster now? (y/N): "
+if /i "!IMPORT_CHOICE!"=="y" (
     echo.
     call :IMPORT_IMAGES_TO_K3D
 )
@@ -385,15 +385,45 @@ goto :eof
 echo Importing images to k3d cluster...
 echo.
 echo Importing auth-service...
-k3d image import tourism-platform-auth-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import auth-service image
+(
+  k3d image import tourism-platform-auth-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" 
+) || (
+  echo ⚠️ Direct import failed for auth-service, trying tar fallback...
+  set "IMG_TAR=%TEMP%\auth-service-%RANDOM%.tar"
+  docker image save tourism-platform-auth-service:latest -o "%IMG_TAR%" && k3d image import -c tourism-cluster "%IMG_TAR%" && del /f /q "%IMG_TAR%" || echo ❌ Tar import failed for auth-service
+)
 echo Importing tours-service...
-k3d image import tourism-platform-tours-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import tours-service image
+(
+  k3d image import tourism-platform-tours-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" 
+) || (
+  echo ⚠️ Direct import failed for tours-service, trying tar fallback...
+  set "IMG_TAR=%TEMP%\tours-service-%RANDOM%.tar"
+  docker image save tourism-platform-tours-service:latest -o "%IMG_TAR%" && k3d image import -c tourism-cluster "%IMG_TAR%" && del /f /q "%IMG_TAR%" || echo ❌ Tar import failed for tours-service
+)
 echo Importing booking-service...
-k3d image import tourism-platform-booking-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import booking-service image
+(
+  k3d image import tourism-platform-booking-service:latest -c tourism-cluster 2>&1 | findstr /V "^$" 
+) || (
+  echo ⚠️ Direct import failed for booking-service, trying tar fallback...
+  set "IMG_TAR=%TEMP%\booking-service-%RANDOM%.tar"
+  docker image save tourism-platform-booking-service:latest -o "%IMG_TAR%" && k3d image import -c tourism-cluster "%IMG_TAR%" && del /f /q "%IMG_TAR%" || echo ❌ Tar import failed for booking-service
+)
 echo Importing frontend...
-k3d image import tourism-platform-frontend:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import frontend image
+(
+  k3d image import tourism-platform-frontend:latest -c tourism-cluster 2>&1 | findstr /V "^$" 
+) || (
+  echo ⚠️ Direct import failed for frontend, trying tar fallback...
+  set "IMG_TAR=%TEMP%\frontend-%RANDOM%.tar"
+  docker image save tourism-platform-frontend:latest -o "%IMG_TAR%" && k3d image import -c tourism-cluster "%IMG_TAR%" && del /f /q "%IMG_TAR%" || echo ❌ Tar import failed for frontend
+)
 echo Importing gateway...
-k3d image import tourism-platform-gateway:latest -c tourism-cluster 2>&1 | findstr /V "^$" || echo ⚠️ Failed to import gateway image
+(
+  k3d image import tourism-platform-gateway:latest -c tourism-cluster 2>&1 | findstr /V "^$" 
+) || (
+  echo ⚠️ Direct import failed for gateway, trying tar fallback...
+  set "IMG_TAR=%TEMP%\gateway-%RANDOM%.tar"
+  docker image save tourism-platform-gateway:latest -o "%IMG_TAR%" && k3d image import -c tourism-cluster "%IMG_TAR%" && del /f /q "%IMG_TAR%" || echo ❌ Tar import failed for gateway
+)
 echo.
 echo ✅ Images import completed!
 goto :eof
