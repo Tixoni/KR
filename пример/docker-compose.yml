@@ -1,0 +1,70 @@
+services:
+  authentification_service:
+    build: ./backend/authentification_service
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/scidata
+    depends_on:
+      db:
+        condition: service_healthy
+
+  data_service:
+    build: ./backend/data_service
+    volumes:
+      - ./backend/data_service/storage:/app/storage
+    ports:
+      - "8001:8001"
+    depends_on:
+      - authentification_service
+
+  processing_service:
+    build: ./backend/processing_service
+    volumes:
+      - ./backend/data_service/storage:/app/storage
+    ports:
+      - "8002:8002"
+    depends_on:
+      - data_service
+
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d scidata"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=scidata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - authentification_service
+      - data_service
+      - processing_service
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - frontend
+      - authentification_service
+      - data_service
+      - processing_service
+
+volumes:
+  pgdata:
