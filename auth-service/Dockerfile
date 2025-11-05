@@ -6,8 +6,14 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Make pip faster and avoid external configs enforcing hashes
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_COLOR=1 \
+    PIP_REQUIRE_HASHES=0
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 FROM python:3.11-slim
 
