@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-service
+  namespace: project-sw
+  labels:
+    app: data-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-service
+  template:
+    metadata:
+      labels:
+        app: data-service
+    spec:
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: data-service
+        image: docker.io/blinomesss/data-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: DATABASE_URL
+        volumeMounts:
+        - name: storage-volume
+          mountPath: /app/storage
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: storage-volume
+        persistentVolumeClaim:
+          claimName: storage-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-service
+  namespace: project-sw
+  labels:
+    app: data-service
+spec:
+  selector:
+    app: data-service
+  ports:
+  - port: 8001
+    targetPort: 8001
+  type: ClusterIP

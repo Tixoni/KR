@@ -5,8 +5,237 @@ on:
     branches: [ "main" ]
 
 jobs:
+  unit-tests:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, tours-service, booking-service]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-test.txt') }}
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+
+      - name: Run unit tests (${{ matrix.service }})
+        working-directory: ${{ matrix.service }}
+        env:
+          PYTHONPATH: .
+        run: pytest -q -n auto
+
+  frontend-unit-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run frontend unit tests
+        run: pytest -q -n auto tests/frontend
+
+  frontend-e2e-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run frontend e2e tests (placeholder)
+        run: pytest -q -n auto tests/frontend_e2e
+
+  integration-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-test.txt') }}
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.24.0
+          cluster_name: tourism-ci
+
+      - name: Build Docker images
+        run: |
+          docker build -t tourism-platform-auth-service:latest ./auth-service
+          docker build -t tourism-platform-tours-service:latest ./tours-service
+          docker build -t tourism-platform-booking-service:latest ./booking-service
+          docker build -t tourism-platform-frontend:latest ./frontend
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image tourism-platform-auth-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-tours-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-booking-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-frontend:latest --name tourism-ci
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/postgres.yaml
+          kubectl apply -f k8s/services-backend.yaml
+          kubectl apply -f k8s/frontend.yaml
+
+      - name: Wait for pods ready
+        run: |
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
+          kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
+
+      - name: Port-forward services
+        run: |
+          kubectl -n tourism port-forward deploy/auth-service 8000:8000 &
+          echo $! > pf-auth.pid
+          kubectl -n tourism port-forward deploy/tours-service 8001:8001 &
+          echo $! > pf-tours.pid
+          kubectl -n tourism port-forward deploy/booking-service 8002:8002 &
+          echo $! > pf-booking.pid
+          sleep 5
+
+      - name: Run integration tests
+        env:
+          AUTH_BASE_URL: http://localhost:8000
+          TOURS_BASE_URL: http://localhost:8001
+          BOOKING_BASE_URL: http://localhost:8002
+        run: pytest -q -n auto integration_test.py
+
+      - name: Teardown port-forward
+        if: always()
+        run: |
+          kill $(cat pf-auth.pid) || true
+          kill $(cat pf-tours.pid) || true
+          kill $(cat pf-booking.pid) || true
+
+  backend-integration-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run backend integration tests (placeholder)
+        run: pytest -q -n auto tests/backend_integration
+
+  e2e-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run e2e tests (placeholder)
+        run: pytest -q -n auto tests/e2e
+
+  performance-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run performance tests (placeholder)
+        run: pytest -q -n auto tests/performance
+
+  mobile-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run mobile tests (placeholder)
+        run: pytest -q -n auto tests/mobile
+
+  accessibility-tests:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run accessibility tests (placeholder)
+        run: pytest -q -n auto tests/accessibility
+
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -94,7 +323,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build-and-push]
     steps:
       - name: Checkout repository
