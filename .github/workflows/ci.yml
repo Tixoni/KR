@@ -385,6 +385,7 @@ jobs:
             fi
           done
 
+          
       - name: Deploy manifests and set images
         env:
           DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
