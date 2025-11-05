@@ -289,8 +289,6 @@ jobs:
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-auth-service:${{ github.sha }}
             ${{ env.DOCKER_USERNAME }}/tourism-platform-auth-service:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build & push booking-service
         uses: docker/build-push-action@v5
@@ -301,8 +299,6 @@ jobs:
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-booking-service:${{ github.sha }}
             ${{ env.DOCKER_USERNAME }}/tourism-platform-booking-service:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build & push tours-service
         uses: docker/build-push-action@v5
@@ -313,8 +309,6 @@ jobs:
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-tours-service:${{ github.sha }}
             ${{ env.DOCKER_USERNAME }}/tourism-platform-tours-service:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build & push gateway
         uses: docker/build-push-action@v5
@@ -325,8 +319,6 @@ jobs:
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-gateway:${{ github.sha }}
             ${{ env.DOCKER_USERNAME }}/tourism-platform-gateway:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build & push frontend
         uses: docker/build-push-action@v5
@@ -337,8 +329,6 @@ jobs:
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-frontend:${{ github.sha }}
             ${{ env.DOCKER_USERNAME }}/tourism-platform-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     runs-on: self-hosted
