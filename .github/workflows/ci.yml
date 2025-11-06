@@ -117,6 +117,7 @@ jobs:
           version: v0.24.0
           cluster_name: tourism-ci
 
+          
       - name: Build Docker images
         shell: bash
         run: |
