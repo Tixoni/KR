@@ -117,7 +117,23 @@ jobs:
           cluster_name: tourism-ci
 
       - name: Build Docker images
+        shell: bash
         run: |
+          retry_pull() {
+            local image="$1"; local tries=5; local delay=10
+            for i in $(seq 1 "$tries"); do
+              echo "Pulling $image (attempt $i/$tries)"
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "Pull failed; sleeping $delay s" && sleep "$delay"
+            done
+            echo "Failed to pull $image after $tries attempts" >&2
+            return 1
+          }
+          # Warm base images to avoid TLS timeouts during build
+          retry_pull python:3.11-slim
+          retry_pull nginx:1.25-alpine || true
           docker build -t tourism-platform-auth-service:latest ./auth-service
           docker build -t tourism-platform-tours-service:latest ./tours-service
           docker build -t tourism-platform-booking-service:latest ./booking-service
@@ -289,6 +305,7 @@ jobs:
         with:
           context: ./auth-service
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-auth-service:${{ github.sha }}
@@ -299,6 +316,7 @@ jobs:
         with:
           context: ./booking-service
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-booking-service:${{ github.sha }}
@@ -309,6 +327,7 @@ jobs:
         with:
           context: ./tours-service
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-tours-service:${{ github.sha }}
@@ -319,6 +338,7 @@ jobs:
         with:
           context: ./gateway-service
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-gateway:${{ github.sha }}
@@ -329,6 +349,7 @@ jobs:
         with:
           context: ./frontend
           push: true
+          pull: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_USERNAME }}/tourism-platform-frontend:${{ github.sha }}
