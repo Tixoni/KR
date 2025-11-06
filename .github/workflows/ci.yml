@@ -253,6 +253,7 @@ jobs:
         run: pytest -q -n auto tests/accessibility
 
   build-and-push:
+    needs: [unit-tests, frontend-unit-tests, frontend-e2e-tests, integration-tests, backend-integration-tests, e2e-tests, performance-tests, mobile-tests, accessibility-tests]
     runs-on: self-hosted
     steps:
       - name: Checkout repository
