@@ -383,6 +383,15 @@ jobs:
         with:
           version: 'v1.30.0'
 
+      - name: Cleanup existing k3d cluster (if exists)
+        shell: bash
+        run: |
+          if k3d cluster list | grep -q "tourism-cluster"; then
+            echo "Removing existing cluster tourism-cluster"
+            k3d cluster delete tourism-cluster || true
+            sleep 2
+          fi
+
       - name: Setup k3d cluster
         uses: AbsaOSS/k3d-action@v2
         with:
