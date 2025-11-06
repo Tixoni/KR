@@ -383,23 +383,39 @@ jobs:
         with:
           version: 'v1.30.0'
 
+      - name: Install k3d
+        shell: bash
+        run: |
+          if ! command -v k3d &> /dev/null; then
+            curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          else
+            echo "k3d already installed: $(k3d version)"
+          fi
+
       - name: Cleanup existing k3d cluster (if exists)
         shell: bash
         run: |
-          if k3d cluster list | grep -q "tourism-cluster"; then
-            echo "Removing existing cluster tourism-cluster"
-            k3d cluster delete tourism-cluster || true
+          # Try to delete cluster, ignore errors if it doesn't exist
+          k3d cluster delete tourism-cluster 2>/dev/null || true
+          # Wait a bit to ensure cleanup is complete
+          sleep 3
+          # Verify cluster is gone
+          if k3d cluster list 2>/dev/null | grep -q "tourism-cluster"; then
+            echo "Warning: Cluster still exists, forcing deletion"
+            k3d cluster delete tourism-cluster --all 2>/dev/null || true
             sleep 2
           fi
 
-      - name: Setup k3d cluster
-        uses: AbsaOSS/k3d-action@v2
-        with:
-          cluster-name: tourism-cluster
-          args: >-
-            --agents 1
-            --api-port 6445
-            --wait
+      - name: Create k3d cluster
+        shell: bash
+        run: |
+          k3d cluster create tourism-cluster \
+            --agents 1 \
+            --api-port 6445 \
+            --wait \
+            --timeout 300s
+          echo "Cluster created successfully"
+          k3d cluster list
       
       - name: Verify cluster context
         run: |
