@@ -72,6 +72,42 @@ python-dotenv==1.0.0
 python-jose[cryptography]==3.3.0
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\check-docker-images.bat]
+[Размер: 852 байт]
+[Дата изменения: 2025-11-04 17:35:37.639379]
+
+@echo off
+setlocal enabledelayedexpansion
+
+if "%1"=="" (
+  echo Usage: %~nx0 DOCKER_USERNAME [IMAGE_TAG]
+  echo Example: %~nx0 tixongomzuak latest
+  exit /b 1
+)
+
+set DOCKER_USERNAME=%~1
+set IMAGE_TAG=%~2
+if "%IMAGE_TAG%"=="" set IMAGE_TAG=latest
+
+echo Checking local Docker images for %DOCKER_USERNAME% with tag %IMAGE_TAG% ...
+
+docker images | findstr /i "%DOCKER_USERNAME%" | findstr /i "%IMAGE_TAG%"
+
+if %errorlevel% neq 0 (
+  echo No matching local images found. This does not check Docker Hub.
+  echo To verify on Docker Hub, run (Linux/Mac/WSL):
+  echo   docker manifest inspect %DOCKER_USERNAME%/tourism-platform-auth-service:%IMAGE_TAG%
+  exit /b 1
+) else (
+  echo.
+  echo If you see your images above, they are present locally.
+  echo Remember to set GitHub Secret: DOCKER_USERNAME = %DOCKER_USERNAME%
+)
+
+endlocal
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\daily-work.bat]
 [Размер: 765 байт]
 [Дата изменения: 2025-10-30 22:34:24.796642]
@@ -108,8 +144,8 @@ if "%DAILY_CHOICE%"=="3" exit
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\manage-platform.bat]
-[Размер: 18343 байт]
-[Дата изменения: 2025-11-04 13:29:36.120582]
+[Размер: 21199 байт]
+[Дата изменения: 2025-11-19 15:39:30.430030]
 
 @echo off
 chcp 65001 >nul
@@ -140,8 +176,9 @@ echo 11. Reset Cluster (Full reset)
 echo 12. Build Docker Images
 echo 13. Import Images to k3d Cluster
 echo 14. Exit
+echo 15. Fix Kubeconfig
 echo.
-set /p CHOICE="Choose option [1-14]: "
+set /p CHOICE="Choose option [1-15]: "
 
 if "%CHOICE%"=="1" goto START_PLATFORM
 if "%CHOICE%"=="2" goto STOP_PLATFORM
@@ -157,6 +194,7 @@ if "%CHOICE%"=="11" goto RESET_CLUSTER
 if "%CHOICE%"=="12" goto BUILD_IMAGES
 if "%CHOICE%"=="13" goto IMPORT_IMAGES
 if "%CHOICE%"=="14" goto EXIT
+if "%CHOICE%"=="15" goto FIX_MENU
 
 echo Invalid choice! Press any key to continue...
 pause >nul
@@ -328,15 +366,21 @@ k3d cluster start tourism-cluster
 timeout /t 5 /nobreak >nul
 
 echo Updating kubeconfig...
-k3d kubeconfig merge tourism-cluster --kubeconfig-switch-context
+k3d kubeconfig merge tourism-cluster --kubeconfig-switch-context --overwrite
 timeout /t 3 /nobreak >nul
 
 echo Verifying cluster connection...
 kubectl cluster-info >nul 2>&1
 if errorlevel 1 (
     echo ❌ Cluster started but connection failed!
-    echo Trying to fix with full reset...
-    call :RESET_CLUSTER
+    echo Attempting to fix kubeconfig...
+    call :FIX_KUBECONFIG
+    timeout /t 3 /nobreak >nul
+    kubectl cluster-info >nul 2>&1
+    if errorlevel 1 (
+        echo ❌ Still cannot connect to cluster!
+        echo Please use option 11 for full reset.
+    )
     goto MAIN_MENU
 )
 
@@ -365,22 +409,31 @@ if /i not "%CONFIRM%"=="y" goto MAIN_MENU
 
 echo.
 echo Resetting cluster...
+
+echo Step 1: Stopping and deleting old cluster...
 k3d cluster delete tourism-cluster
 timeout /t 5 /nobreak >nul
 
-echo Creating new cluster with fixed API port...
+echo Step 2: Cleaning up old kubeconfig entries...
+kubectl config delete-context k3d-tourism-cluster 2>nul
+kubectl config delete-cluster k3d-tourism-cluster 2>nul
+kubectl config delete-user admin@tourism-cluster 2>nul
+
+echo Step 3: Creating new cluster with fixed API port...
 k3d cluster create tourism-cluster -p "8080:80@loadbalancer" --api-port 6443 --wait
 timeout /t 15 /nobreak >nul
 
-echo Updating kubeconfig...
-k3d kubeconfig merge tourism-cluster --kubeconfig-switch-context
+echo Step 4: Force updating kubeconfig...
+k3d kubeconfig delete tourism-cluster 2>nul
+k3d kubeconfig write tourism-cluster --overwrite
+k3d kubeconfig merge tourism-cluster --kubeconfig-switch-context --overwrite
 timeout /t 3 /nobreak >nul
 
-echo Verifying cluster...
+echo Step 5: Verifying cluster connection...
 echo Waiting for cluster to be fully ready...
 timeout /t 10 /nobreak >nul
 
-echo Checking cluster connection...
+echo Step 6: Testing cluster connection...
 kubectl cluster-info
 if errorlevel 1 (
     echo ❌ Cluster verification failed!
@@ -392,12 +445,14 @@ if errorlevel 1 (
     echo - K3d clusters:
     k3d cluster list
     echo.
-    echo - Kubernetes nodes:
-    kubectl get nodes
+    echo - Current kubeconfig context:
+    kubectl config current-context 2>nul || echo "No context set"
     echo.
-    echo Please wait a moment and try option 9 to start the cluster.
+    echo - Available contexts:
+    kubectl config get-contexts 2>nul || echo "Cannot get contexts"
     echo.
-    pause
+    echo Trying alternative kubeconfig approach...
+    call :FIX_KUBECONFIG
     goto MAIN_MENU
 )
 
@@ -450,7 +505,9 @@ echo Platform started! Checking status...
 kubectl get pods -n %NAMESPACE% --sort-by=.metadata.creationTimestamp
 echo.
 echo Starting automatic port forwarding for frontend...
-
+start "" /B kubectl port-forward -n %NAMESPACE% service/frontend 8081:80
+timeout /t 2 /nobreak >nul
+start "" /B kubectl port-forward -n %NAMESPACE% service/gateway 8080:8080
 echo.
 echo ✅ Port forwarding started successfully!
 echo 🌐 Access the application at: http://localhost:8081
@@ -493,6 +550,14 @@ echo Building Docker images silently...
 )
 
 goto :eof
+
+:FIX_MENU
+echo.
+echo Fixing kubeconfig configuration...
+call :FIX_KUBECONFIG
+echo.
+pause
+goto MAIN_MENU
 
 :IMPORT_IMAGES_TO_K3D
 echo Importing images to k3d cluster...
@@ -562,16 +627,19 @@ kubectl delete -f k8s/services-backend.yaml --ignore-not-found=true
 kubectl delete -f k8s/postgres.yaml --ignore-not-found=true
 echo.
 echo Platform stopped!
+if defined RESTART_PENDING (
+    set "RESTART_PENDING="
+    timeout /t 5 /nobreak >nul
+    goto START_PLATFORM
+)
 pause
 goto MAIN_MENU
 
 :RESTART_PLATFORM
 echo.
 echo Restarting Tourism Platform...
-call :STOP_PLATFORM
-timeout /t 5 /nobreak >nul
-call :START_PLATFORM
-goto MAIN_MENU
+set "RESTART_PENDING=1"
+goto STOP_PLATFORM
 
 :CHECK_STATUS
 echo.
@@ -733,6 +801,55 @@ echo.
 pause
 goto MAIN_MENU
 
+:FIX_KUBECONFIG
+echo.
+echo 🔧 Attempting to fix kubeconfig issues...
+
+echo 1. Checking current kubeconfig...
+kubectl config view 2>nul && echo "Kubeconfig exists" || echo "No kubeconfig found"
+
+echo 2. Getting k3d kubeconfig directly...
+set K3D_CONFIG_FILE=%TEMP%\k3d-config-%RANDOM%.yaml
+k3d kubeconfig get tourism-cluster > "%K3D_CONFIG_FILE%" 2>nul
+
+if exist "%K3D_CONFIG_FILE%" (
+    echo 3. Using direct k3d kubeconfig...
+    set "ORIG_KUBECONFIG=!KUBECONFIG!"
+    if defined KUBECONFIG (
+        set "HAD_ORIG_KUBECONFIG=1"
+    ) else (
+        set "HAD_ORIG_KUBECONFIG=0"
+    )
+    set KUBECONFIG=%K3D_CONFIG_FILE%
+    kubectl cluster-info 2>nul && (
+        echo ✅ Success with direct kubeconfig!
+        echo Current context: 
+        kubectl config current-context
+        call :RESTORE_KUBECONFIG_ENV
+        del "%K3D_CONFIG_FILE%"
+        goto :eof
+    )
+    call :RESTORE_KUBECONFIG_ENV
+    del "%K3D_CONFIG_FILE%"
+)
+
+echo 4. Trying manual kubeconfig reconstruction...
+k3d kubeconfig write tourism-cluster --overwrite
+timeout /t 2 /nobreak >nul
+
+echo 5. Setting context...
+kubectl config use-context k3d-tourism-cluster 2>nul
+
+echo 6. Final verification...
+kubectl cluster-info 2>nul && (
+    echo ✅ Kubeconfig fixed successfully!
+) || (
+    echo ❌ Still cannot connect to cluster.
+    echo Please check if Docker is running and try option 11 again.
+)
+
+goto :eof
+
 :EXIT
 echo.
 echo Stopping any running port-forward processes...
@@ -740,6 +857,16 @@ taskkill /f /im kubectl.exe >nul 2>&1
 echo Goodbye!
 timeout /t 2 /nobreak >nul
 exit
+
+:RESTORE_KUBECONFIG_ENV
+if "%HAD_ORIG_KUBECONFIG%"=="1" (
+    set "KUBECONFIG=%ORIG_KUBECONFIG%"
+) else (
+    set "KUBECONFIG="
+)
+set "HAD_ORIG_KUBECONFIG="
+set "ORIG_KUBECONFIG="
+goto :eof
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\reset-and-fix.bat]
@@ -832,8 +959,8 @@ echo Platform stopped.
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\frontend\script.js]
-[Размер: 38908 байт]
-[Дата изменения: 2025-10-31 22:32:15.006390]
+[Размер: 44275 байт]
+[Дата изменения: 2025-11-18 22:15:46.295823]
 
 // Глобальные переменные
 let currentUser = null;
@@ -910,7 +1037,7 @@ function handleUnauthorized() {
 // Функция проверки роли администратора
 function isAdmin() {
   const isAdminUser = currentUser && ADMIN_USERS.includes(currentUser.username);
-  console.log('🔍 Проверка прав администратора:', {
+  console.log('Проверка прав администратора:', {
     currentUser: currentUser?.username,
     isAdmin: isAdminUser,
     adminUsers: ADMIN_USERS
@@ -933,7 +1060,7 @@ function updateAuthState(isAuthenticated) {
     
     // Показываем секцию администратора только для админов
     if (isAdmin()) {
-      console.log('👑 Показываем секцию администратора');
+      console.log('Показываем секцию администратора');
       adminSection.classList.remove('hidden');
       // Показываем кнопку создания тура
       const createButton = document.getElementById('create-tour-button');
@@ -943,7 +1070,7 @@ function updateAuthState(isAuthenticated) {
       // Загружаем список пользователей для администратора
       loadUsers();
     } else {
-      console.log('👤 Скрываем секцию администратора');
+      console.log('Скрываем секцию администратора');
       adminSection.classList.add('hidden');
       // Скрываем кнопку создания тура
       const createButton = document.getElementById('create-tour-button');
@@ -968,7 +1095,7 @@ function updateAuthState(isAuthenticated) {
 
 async function loadCurrentUser() {
   try {
-    console.log('👤 Загружаем данные пользователя...');
+    console.log('Загружаем данные пользователя...');
     const res = await fetch('/api/auth/users/me', { headers: authHeader() });
     console.log('Response status:', res.status);
     
@@ -1030,7 +1157,7 @@ async function loadTours(){
     const isAuthenticated = !!getToken();
     const isAdminUser = isAdmin();
     
-    console.log('🔍 Состояние при загрузке туров:', {
+    console.log('Состояние при загрузке туров:', {
       isAuthenticated,
       isAdminUser,
       currentUser: currentUser?.username,
@@ -1038,20 +1165,26 @@ async function loadTours(){
     });
     
   root.innerHTML = data.map(t => {
-    console.log(`🔍 Обрабатываем тур ${t.id}:`, {
+    console.log(`Обрабатываем тур ${t.id}:`, {
       title: t.title,
       isAdminUser,
       isAuthenticated
     });
     
     return `<div class="card">
+        ${t.images && t.images.length > 0 ? 
+          `<div class="tour-images">
+            ${t.images.map(img => `<img src="${escapeHtml(img)}" alt="${escapeHtml(t.title)}" onerror="this.style.display='none'" />`).join('')}
+          </div>` : 
+          ''
+        }
         <h4>${escapeHtml(t.title)}</h4>
-        <div class="destination">📍 ${escapeHtml(t.destination)}</div>
+        <div class="destination">${escapeHtml(t.destination)}</div>
         ${t.description ? `<div class="description">${escapeHtml(t.description)}</div>` : ''}
         <div class="price">${t.price} ₽</div>
-        <div class="duration">⏱️ ${t.duration_days} дней</div>
+        <div class="duration">${t.duration_days} дней</div>
         <div class="available ${t.available ? 'true' : 'false'}">
-          ${t.available ? '✅ Доступен' : '❌ Недоступен'}
+          ${t.available ? 'Доступен' : 'Недоступен'}
         </div>
         ${t.features && t.features.length > 0 ? 
           `<div class="features">${t.features.map(f => `• ${escapeHtml(f)}`).join('<br>')}</div>` : 
@@ -1059,12 +1192,12 @@ async function loadTours(){
         }
         <div class="card-actions">
           <button class="book-btn" onclick="bookTour(${t.id})" ${!t.available || !isAuthenticated ? 'disabled' : ''}>
-            ${!isAuthenticated ? '🔒 Войдите для бронирования' : !t.available ? '❌ Недоступен' : '🎯 Забронировать'}
+            ${!isAuthenticated ? 'Войдите для бронирования' : !t.available ? 'Недоступен' : 'Забронировать'}
           </button>
           ${isAdminUser ? `
             <div class="admin-actions">
-              <button class="edit-btn" onclick="editTour(${t.id})">✏️ Редактировать</button>
-              <button class="delete-btn" onclick="deleteTour(${t.id})">🗑️ Удалить</button>
+              <button class="edit-btn" onclick="editTour(${t.id})">Редактировать</button>
+              <button class="delete-btn" onclick="deleteTour(${t.id})">Удалить</button>
             </div>
           ` : ''}
         </div>
@@ -1146,16 +1279,16 @@ async function bookTour(tourId) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`✅ Тур "${tour.title}" успешно забронирован!`);
+      alert(`Тур "${tour.title}" успешно забронирован!`);
     } else {
-      console.log(`✅ Тур "${tour.title}" успешно забронирован!`);
+      console.log(`Тур "${tour.title}" успешно забронирован!`);
     }
     loadTours(); // Обновляем список туров
   } catch (error) {
     console.error('Ошибка бронирования:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка бронирования: ${error.message}`);
+      alert(`Ошибка бронирования: ${error.message}`);
     }
   }
 }
@@ -1164,12 +1297,47 @@ async function bookTour(tourId) {
 async function handleTourForm(e){
   e.preventDefault();
   try {
-    console.log('🔧 Обработка формы тура...');
+    console.log('Обработка формы тура...');
   const form = e.target;
     const tourId = document.getElementById('tour-id').value;
     console.log('Tour ID:', tourId);
     
   const features = (form.features.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  
+  // Обработка фотографий
+  let images = [];
+  
+  // Получаем URL из текстового поля
+  const urlsInput = document.getElementById('images-urls');
+  if (urlsInput && urlsInput.value.trim()) {
+    const urls = urlsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    images.push(...urls);
+  }
+  
+  // Конвертируем загруженные файлы в data URL
+  const fileInput = document.getElementById('images-upload');
+  if (fileInput && fileInput.files && fileInput.files.length > 0) {
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB на файл
+    const files = Array.from(fileInput.files);
+    
+    // Проверяем размер файлов
+    const oversizedFiles = files.filter(file => file.size > MAX_FILE_SIZE);
+    if (oversizedFiles.length > 0) {
+      throw new Error(`Файлы слишком большие. Максимальный размер: 5MB. Большие файлы: ${oversizedFiles.map(f => f.name).join(', ')}`);
+    }
+    
+    const filePromises = files.map(file => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    });
+    const dataUrls = await Promise.all(filePromises);
+    images.push(...dataUrls.filter(url => url !== null));
+  }
+  
   const payload = {
     title: form.title.value,
     destination: form.destination.value,
@@ -1177,6 +1345,7 @@ async function handleTourForm(e){
     duration_days: Number(form.duration_days.value),
     description: form.description.value || null,
     features: features.length? features : null,
+    images: images.length > 0 ? images : null,
     available: true
   };
     
@@ -1185,7 +1354,7 @@ async function handleTourForm(e){
     let res;
     if (tourId) {
       // Редактирование существующего тура
-      console.log('🔄 Редактирование тура:', tourId);
+      console.log('Редактирование тура:', tourId);
       console.log('Текущий пользователь:', currentUser);
       console.log('Токен авторизации:', getToken() ? 'Есть' : 'Нет');
       console.log('Заголовки запроса:', {...{'Content-Type': 'application/json'}, ...authHeader()});
@@ -1196,7 +1365,7 @@ async function handleTourForm(e){
       });
     } else {
       // Создание нового тура
-      console.log('➕ Создание нового тура');
+      console.log('Создание нового тура');
       console.log('Текущий пользователь:', currentUser);
       console.log('Токен авторизации:', getToken() ? 'Есть' : 'Нет');
       res = await fetch('/api/tours/tours', { 
@@ -1223,7 +1392,7 @@ async function handleTourForm(e){
     }
     
     const statusText = tourId ? 'Тур обновлен' : 'Тур создан';
-    document.getElementById('admin-tour-status').textContent = `✅ ${statusText}`;
+    document.getElementById('admin-tour-status').textContent = `${statusText}`;
     document.getElementById('admin-tour-status').className = 'status success';
     
     form.reset();
@@ -1232,7 +1401,7 @@ async function handleTourForm(e){
     loadTours();
   } catch (error) {
     console.error('Ошибка обработки тура:', error);
-    document.getElementById('admin-tour-status').textContent = `❌ Ошибка: ${error.message}`;
+    document.getElementById('admin-tour-status').textContent = `Ошибка: ${error.message}`;
     document.getElementById('admin-tour-status').className = 'status error';
   }
 }
@@ -1241,7 +1410,7 @@ async function handleTourForm(e){
 async function editTour(tourId) {
   lala_eagle.play();
   try {
-    console.log('✏️ Редактирование тура:', tourId);
+    console.log('Редактирование тура:', tourId);
     const res = await fetch(`/api/tours/tours/${tourId}`, { headers: authHeader() });
     console.log('Response status:', res.status);
     
@@ -1262,28 +1431,39 @@ async function editTour(tourId) {
     document.querySelector('textarea[name="description"]').value = tour.description || '';
     document.querySelector('input[name="features"]').value = tour.features ? tour.features.join(', ') : '';
     
+    // Заполняем фотографии
+    const imagesUrlsInput = document.getElementById('images-urls');
+    if (imagesUrlsInput && tour.images && tour.images.length > 0) {
+      imagesUrlsInput.value = tour.images.join(', ');
+      // Показываем превью существующих фотографий
+      updateImagesPreview(tour.images);
+    } else if (imagesUrlsInput) {
+      imagesUrlsInput.value = '';
+      document.getElementById('images-preview').innerHTML = '';
+    }
+    
     // Обновляем интерфейс формы
-    document.getElementById('admin-form-title').textContent = '✏️ Редактировать тур';
+    document.getElementById('admin-form-title').textContent = 'Редактировать тур';
     document.getElementById('submit-tour-btn').textContent = 'Обновить тур';
     document.getElementById('cancel-edit-btn').classList.remove('hidden');
     
     // Прокручиваем к форме
     document.getElementById('admin-section').scrollIntoView({ behavior: 'smooth' });
     
-    console.log('✅ Форма заполнена для редактирования');
+    console.log('Форма заполнена для редактирования');
     
   } catch (error) {
     console.error('Ошибка загрузки тура для редактирования:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка: ${error.message}`);
+      alert(`Ошибка: ${error.message}`);
     }
   }
 }
 
 // Удаление тура
 async function deleteTour(tourId) {
-  console.log('🗑️ Удаление тура:', tourId);
+  console.log('Удаление тура:', tourId);
   
   // Убираем подтверждение для localhost
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -1309,16 +1489,16 @@ async function deleteTour(tourId) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('✅ Тур успешно удален!');
+      alert('Тур успешно удален!');
     } else {
-      console.log('✅ Тур успешно удален!');
+      console.log('Тур успешно удален!');
     }
     loadTours();
   } catch (error) {
     console.error('Ошибка удаления тура:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка удаления: ${error.message}`);
+      alert(`Ошибка удаления: ${error.message}`);
     }
   }
 }
@@ -1330,17 +1510,54 @@ function cancelEditTour() {
 
 // Сброс формы к состоянию создания
 function resetTourForm() {
-  document.getElementById('admin-form-title').textContent = '➕ Создать новый тур';
+  document.getElementById('admin-form-title').textContent = 'Создать новый тур';
   document.getElementById('submit-tour-btn').textContent = 'Создать тур';
   document.getElementById('cancel-edit-btn').classList.add('hidden');
   document.getElementById('tour-id').value = '';
   document.getElementById('admin-tour-status').textContent = '';
   document.getElementById('admin-tour-status').className = 'status';
+  
+  // Очищаем фотографии
+  const imagesUrlsInput = document.getElementById('images-urls');
+  const imagesUploadInput = document.getElementById('images-upload');
+  const imagesPreview = document.getElementById('images-preview');
+  if (imagesUrlsInput) imagesUrlsInput.value = '';
+  if (imagesUploadInput) imagesUploadInput.value = '';
+  if (imagesPreview) imagesPreview.innerHTML = '';
+}
+
+// Функция для обновления превью фотографий
+function updateImagesPreview(imageUrls) {
+  const preview = document.getElementById('images-preview');
+  if (!preview) return;
+  
+  if (!imageUrls || imageUrls.length === 0) {
+    preview.innerHTML = '';
+    return;
+  }
+  
+  preview.innerHTML = imageUrls.map((url, index) => 
+    `<div class="image-preview-item">
+      <img src="${escapeHtml(url)}" alt="Preview ${index + 1}" onerror="this.parentElement.remove()" />
+      <button type="button" class="remove-image-btn" onclick="removeImagePreview(${index})">×</button>
+    </div>`
+  ).join('');
+}
+
+// Функция для удаления фотографии из превью
+function removeImagePreview(index) {
+  const imagesUrlsInput = document.getElementById('images-urls');
+  if (imagesUrlsInput && imagesUrlsInput.value) {
+    const urls = imagesUrlsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    urls.splice(index, 1);
+    imagesUrlsInput.value = urls.join(', ');
+    updateImagesPreview(urls);
+  }
 }
 
 async function loadBookings(){
   if (!getToken()) {
-    document.getElementById('bookings-list').innerHTML = '<div class="card error">🔒 Войдите в систему для просмотра бронирований</div>';
+    document.getElementById('bookings-list').innerHTML = '<div class="card error">Войдите в систему для просмотра бронирований</div>';
     return;
   }
   
@@ -1356,7 +1573,7 @@ async function loadBookings(){
       // Если токен истек (401), выходим из системы
       if (res.status === 401) {
         handleUnauthorized();
-        document.getElementById('bookings-list').innerHTML = '<div class="card error">🔒 Сессия истекла. Войдите в систему заново.</div>';
+        document.getElementById('bookings-list').innerHTML = '<div class="card error">Сессия истекла. Войдите в систему заново.</div>';
         return;
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -1366,7 +1583,7 @@ async function loadBookings(){
   const root = document.getElementById('bookings-list');
     
     if (data.length === 0) {
-      root.innerHTML = '<div class="card">📋 У вас пока нет бронирований</div>';
+      root.innerHTML = '<div class="card">У вас пока нет бронирований</div>';
       return;
     }
     
@@ -1380,7 +1597,7 @@ async function loadBookings(){
     if (activeBookings.length > 0) {
       html += `
         <div class="bookings-section">
-          <h3>📋 Актуальные бронирования</h3>
+          <h3>Актуальные бронирования</h3>
           <div class="bookings-grid">
             ${activeBookings.map(b => createBookingCard(b)).join('')}
           </div>
@@ -1392,7 +1609,7 @@ async function loadBookings(){
     if (cancelledBookings.length > 0) {
       html += `
         <div class="bookings-section">
-          <h3>❌ Отменённые бронирования</h3>
+          <h3>Отменённые бронирования</h3>
           <div class="bookings-grid cancelled">
             ${cancelledBookings.map(b => createBookingCard(b)).join('')}
           </div>
@@ -1401,7 +1618,7 @@ async function loadBookings(){
     }
     
     if (activeBookings.length === 0 && cancelledBookings.length === 0) {
-      html = '<div class="card">📋 У вас пока нет бронирований</div>';
+      html = '<div class="card">У вас пока нет бронирований</div>';
     }
     
     root.innerHTML = html;
@@ -1415,20 +1632,20 @@ async function loadBookings(){
 function createBookingCard(b) {
   return `
     <div class="card booking-card ${b.status}">
-      <h4>🎫 Бронь #${b.id}</h4>
+      <h4>Бронь #${b.id}</h4>
       <div class="booking-info">
-        <div>🏨 Тур: ${b.title}</div>
-        <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
-        <div>👥 Участники: ${b.participants_count}</div>
-        <div class="price">💰 Сумма: ${b.total_price} ₽</div>
+        <div>Тур: ${b.title}</div>
+        <div>Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
+        <div>Участники: ${b.participants_count}</div>
+        <div class="price">Сумма: ${b.total_price} ₽</div>
         <div class="status">
           <span class="status-badge ${b.status}">${getStatusText(b.status)}</span>
           <span class="payment-badge ${b.payment_status}">${getPaymentText(b.payment_status)}</span>
         </div>
       </div>
       <div class="booking-actions">
-        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
-        ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">❌ Отменить</button>`:''}
+        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">Подтвердить</button>`:''}
+        ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">Отменить</button>`:''}
       </div>
     </div>
   `;
@@ -1436,19 +1653,19 @@ function createBookingCard(b) {
 
 function getStatusText(status) {
   const statusMap = {
-    'pending': '⏳ Ожидает',
-    'confirmed': '✅ Подтверждено',
-    'cancelled': '❌ Отменено',
-    'completed': '🎉 Завершено'
+    'pending': 'Ожидает',
+    'confirmed': 'Подтверждено',
+    'cancelled': 'Отменено',
+    'completed': 'Завершено'
   };
   return statusMap[status] || status;
 }
 
 function getPaymentText(status) {
   const paymentMap = {
-    'pending': '⏳ Ожидает оплаты',
-    'paid': '✅ Оплачено',
-    'refunded': '💸 Возвращено'
+    'pending': 'Ожидает оплаты',
+    'paid': 'Оплачено',
+    'refunded': 'Возвращено'
   };
   return paymentMap[status] || status;
 }
@@ -1519,7 +1736,7 @@ async function login(e){
     if (data.access_token) {
       lala_eagle.play(); // Воспроизводим звук при успешном входе
       setToken(data.access_token);
-      document.getElementById('login-status').textContent = '✅ Успешно!';
+      document.getElementById('login-status').textContent = 'Успешно!';
       document.getElementById('login-status').className = 'status success';
       form.reset();
       closeAuthModal();
@@ -1528,7 +1745,7 @@ async function login(e){
     }
   } catch (error) {
     console.error('Ошибка входа:', error);
-    document.getElementById('login-status').textContent = `❌ ${error.message}`;
+    document.getElementById('login-status').textContent = `${error.message}`;
     document.getElementById('login-status').className = 'status error';
   }
 }
@@ -1551,14 +1768,14 @@ async function registerUser(e){
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
     
-    document.getElementById('register-status').textContent = '✅ Аккаунт создан!';
+    document.getElementById('register-status').textContent = 'Аккаунт создан!';
     document.getElementById('register-status').className = 'status success';
     form.reset();
     // Переключаемся на вкладку входа
     switchAuthTab('login');
   } catch (error) {
     console.error('Ошибка регистрации:', error);
-    document.getElementById('register-status').textContent = `❌ ${error.message}`;
+    document.getElementById('register-status').textContent = `${error.message}`;
     document.getElementById('register-status').className = 'status error';
   }
 }
@@ -1601,7 +1818,7 @@ async function createTestTour() {
 
 // Функция для показа формы создания тура
 function showCreateTourForm() {
-  console.log('📝 Показываем форму создания тура');
+  console.log('Показываем форму создания тура');
   console.log('Текущий пользователь:', currentUser);
   console.log('Токен:', !!getToken());
   console.log('Является админом:', isAdmin());
@@ -1610,7 +1827,7 @@ function showCreateTourForm() {
   if (!getToken()) {
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('❌ Необходимо войти в систему для создания тура');
+      alert('Необходимо войти в систему для создания тура');
     }
     toggleAuthModal();
     return;
@@ -1620,7 +1837,7 @@ function showCreateTourForm() {
   if (!isAdmin()) {
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('❌ Только администраторы могут создавать туры');
+      alert('Только администраторы могут создавать туры');
     }
     return;
   }
@@ -1635,18 +1852,18 @@ function showCreateTourForm() {
   // Прокручиваем к форме
   adminSection.scrollIntoView({ behavior: 'smooth' });
   
-  console.log('✅ Форма создания тура показана');
+  console.log('Форма создания тура показана');
 }
 
 // Функции для управления пользователями
 async function loadUsers() {
   if (!getToken()) {
-    document.getElementById('users-list').innerHTML = '<div class="card error">🔒 Войдите в систему</div>';
+    document.getElementById('users-list').innerHTML = '<div class="card error">Войдите в систему</div>';
     return;
   }
   
   if (!isAdmin()) {
-    document.getElementById('users-list').innerHTML = '<div class="card error">❌ Недостаточно прав</div>';
+    document.getElementById('users-list').innerHTML = '<div class="card error">Недостаточно прав</div>';
     return;
   }
   
@@ -1657,7 +1874,7 @@ async function loadUsers() {
       // Если токен истек (401), выходим из системы
       if (res.status === 401) {
         handleUnauthorized();
-        document.getElementById('users-list').innerHTML = '<div class="card error">🔒 Сессия истекла. Войдите в систему заново.</div>';
+        document.getElementById('users-list').innerHTML = '<div class="card error">Сессия истекла. Войдите в систему заново.</div>';
         return;
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -1667,7 +1884,7 @@ async function loadUsers() {
     const root = document.getElementById('users-list');
     
     if (users.length === 0) {
-      root.innerHTML = '<div class="card">👥 Пользователи не найдены</div>';
+      root.innerHTML = '<div class="card">Пользователи не найдены</div>';
       return;
     }
     
@@ -1685,19 +1902,19 @@ function createUserCard(user) {
   
   return `
     <div class="card user-card ${isCurrentUser ? 'current-user' : ''}">
-      <h4>👤 ${escapeHtml(user.username)} ${isCurrentUser ? '(Вы)' : ''}</h4>
+      <h4>${escapeHtml(user.username)} ${isCurrentUser ? '(Вы)' : ''}</h4>
       <div class="user-info">
-        <div>📧 ${escapeHtml(user.email)}</div>
-        <div>👋 ${escapeHtml(user.name)}</div>
-        ${user.phone ? `<div>📱 ${escapeHtml(user.phone)}</div>` : ''}
+        <div>${escapeHtml(user.email)}</div>
+        <div>${escapeHtml(user.name)}</div>
+        ${user.phone ? `<div>${escapeHtml(user.phone)}</div>` : ''}
         <div class="user-meta">
           <span class="user-id">ID: ${user.id}</span>
-          ${isAdminUser ? '<span class="admin-badge">👑 Админ</span>' : ''}
+          ${isAdminUser ? '<span class="admin-badge">Админ</span>' : ''}
         </div>
       </div>
       <div class="user-actions">
         ${!isCurrentUser && !isAdminUser ? `
-          <button class="delete-btn" onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')">🗑️ Удалить</button>
+          <button class="delete-btn" onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')">Удалить</button>
         ` : ''}
         ${isCurrentUser ? '<span class="current-user-text">Текущий пользователь</span>' : ''}
         ${isAdminUser && !isCurrentUser ? '<span class="admin-protected">Защищенный аккаунт</span>' : ''}
@@ -1708,7 +1925,7 @@ function createUserCard(user) {
 
 // Функция удаления пользователя
 async function deleteUser(userId, username) {
-  console.log('🗑️ Удаление пользователя:', userId, username);
+  console.log('Удаление пользователя:', userId, username);
   
   // Убираем подтверждение для localhost
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -1734,16 +1951,16 @@ async function deleteUser(userId, username) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`✅ Пользователь "${username}" успешно удален!`);
+      alert(`Пользователь "${username}" успешно удален!`);
     } else {
-      console.log(`✅ Пользователь "${username}" успешно удален!`);
+      console.log(`Пользователь "${username}" успешно удален!`);
     }
     loadUsers(); // Обновляем список пользователей
   } catch (error) {
     console.error('Ошибка удаления пользователя:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка удаления: ${error.message}`);
+      alert(`Ошибка удаления: ${error.message}`);
     }
   }
 }
@@ -1768,6 +1985,52 @@ document.addEventListener('DOMContentLoaded', function() {
       closeAuthModal();
     }
   });
+  
+  // Обработчик загрузки файлов для предпросмотра
+  const imagesUploadInput = document.getElementById('images-upload');
+  if (imagesUploadInput) {
+    imagesUploadInput.addEventListener('change', async function(e) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+      
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB на файл
+      const oversizedFiles = files.filter(file => file.size > MAX_FILE_SIZE);
+      
+      if (oversizedFiles.length > 0) {
+        alert(`Некоторые файлы слишком большие (максимум 5MB на файл): ${oversizedFiles.map(f => f.name).join(', ')}`);
+        e.target.value = ''; // Очищаем input
+        return;
+      }
+      
+      const filePromises = files.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      });
+      
+      const dataUrls = await Promise.all(filePromises);
+      const validUrls = dataUrls.filter(url => url !== null);
+      
+      // Добавляем к существующим URL
+      const imagesUrlsInput = document.getElementById('images-urls');
+      const existingUrls = imagesUrlsInput.value ? imagesUrlsInput.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const allUrls = [...existingUrls, ...validUrls];
+      imagesUrlsInput.value = allUrls.join(', ');
+      updateImagesPreview(allUrls);
+    });
+  }
+  
+  // Обработчик изменения текстового поля с URL
+  const imagesUrlsInput = document.getElementById('images-urls');
+  if (imagesUrlsInput) {
+    imagesUrlsInput.addEventListener('input', function(e) {
+      const urls = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+      updateImagesPreview(urls);
+    });
+  }
   
   // Добавляем кнопки для отладки (только для localhost)
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -1796,8 +2059,8 @@ document.addEventListener('DOMContentLoaded', function() {
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\frontend\index.html]
-[Размер: 6145 байт]
-[Дата изменения: 2025-10-21 13:55:05.044077]
+[Размер: 6609 байт]
+[Дата изменения: 2025-11-18 22:16:31.266956]
 
 <!doctype html>
 <html lang="ru">
@@ -1809,12 +2072,12 @@ document.addEventListener('DOMContentLoaded', function() {
   </head>
   <body>
     <header class="container header">
-      <h1>🌍 Tourism Platform</h1>
+      <h1>Tourism Platform</h1>
       <nav>
         <a href="#tours" onclick="showSection('tours')">Туры</a>
         <a href="#bookings" onclick="showSection('bookings')" id="bookings-nav" class="auth-required">Мои бронирования</a>
         <div class="user-section">
-          <span id="user-display" class="user-info hidden">Привет, <span id="username-display"></span>!</span>
+          <span id="user-display" class="user-info hidden">Добро пожаловать, <span id="username-display"></span>!</span>
           <button id="auth-btn" class="auth-btn" onclick="toggleAuthModal()">Войти</button>
           <button id="logout-btn" class="logout-btn hidden" onclick="logout()">Выйти</button>
         </div>
@@ -1823,16 +2086,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <main class="container">
       <section id="section-tours" class="section">
-        <h2>🌴 Наши туры</h2>
+        <h2>Наши туры</h2>
         <div class="controls">
-          <input id="filter-destination" placeholder="🔍 Поиск по направлению..." />
+          <input id="filter-destination" placeholder="Поиск по направлению..." />
           <button onclick="loadTours()">Найти туры</button>
         </div>
         <div id="tours-list" class="cards"></div>
         
         <!-- Форма создания/редактирования тура (только для администраторов) -->
         <div id="admin-section" class="admin-section hidden">
-          <h3 id="admin-form-title">➕ Создать новый тур</h3>
+          <h3 id="admin-form-title">Создать новый тур</h3>
           <form id="admin-tour-form" onsubmit="handleTourForm(event)">
             <input type="hidden" id="tour-id" name="tour_id" />
             <div class="grid">
@@ -1843,6 +2106,12 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <textarea name="description" placeholder="Описание тура"></textarea>
             <input name="features" placeholder="Особенности (через запятую)" />
+            <div class="form-group">
+              <label>Фотографии (URL через запятую или загрузите файлы, макс. 5MB на файл)</label>
+              <input type="text" name="images-urls" id="images-urls" placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg" />
+              <input type="file" id="images-upload" name="images-upload" multiple accept="image/*" />
+              <div id="images-preview" class="images-preview"></div>
+            </div>
             <div class="form-actions">
               <button type="submit" id="submit-tour-btn">Создать тур</button>
               <button type="button" id="cancel-edit-btn" class="cancel-btn hidden" onclick="cancelEditTour()">Отменить</button>
@@ -1852,9 +2121,9 @@ document.addEventListener('DOMContentLoaded', function() {
           
           <!-- Секция управления пользователями -->
           <div class="admin-users-section">
-            <h3>👥 Управление пользователями</h3>
+            <h3>Управление пользователями</h3>
             <div class="controls">
-              <button onclick="loadUsers()">🔄 Обновить список</button>
+              <button onclick="loadUsers()">Обновить список</button>
             </div>
             <div id="users-list" class="cards"></div>
           </div>
@@ -1862,9 +2131,9 @@ document.addEventListener('DOMContentLoaded', function() {
       </section>
 
       <section id="section-bookings" class="section hidden">
-        <h2>📋 Мои бронирования</h2>
+        <h2>Мои бронирования</h2>
         <div class="controls">
-          <button onclick="loadBookings()">🔄 Обновить</button>
+          <button onclick="loadBookings()">Обновить</button>
         </div>
         <div id="bookings-list" class="cards"></div>
       </section>
@@ -1875,7 +2144,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div id="auth-modal" class="modal hidden">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>🔐 Авторизация</h2>
+          <h2>Авторизация</h2>
           <button class="close-btn" onclick="closeAuthModal()">&times;</button>
         </div>
         
@@ -1887,11 +2156,11 @@ document.addEventListener('DOMContentLoaded', function() {
         <div id="login-tab" class="auth-tab active">
           <form id="login-form" onsubmit="login(event)">
             <div class="form-group">
-              <label>👤 Логин</label>
+              <label>Логин</label>
               <input name="username" placeholder="Введите логин" required />
             </div>
             <div class="form-group">
-              <label>🔒 Пароль</label>
+              <label>Пароль</label>
               <input name="password" type="password" placeholder="Введите пароль" required />
             </div>
             <button type="submit" class="submit-btn">Войти</button>
@@ -1902,23 +2171,23 @@ document.addEventListener('DOMContentLoaded', function() {
         <div id="register-tab" class="auth-tab">
           <form id="register-form" onsubmit="registerUser(event)">
             <div class="form-group">
-              <label>👤 Логин</label>
+              <label>Логин</label>
               <input name="username" placeholder="Введите логин" required />
             </div>
             <div class="form-group">
-              <label>🔒 Пароль</label>
+              <label>Пароль</label>
               <input name="password" type="password" placeholder="Введите пароль" required />
             </div>
             <div class="form-group">
-              <label>📧 Email</label>
+              <label>Email</label>
               <input name="email" type="email" placeholder="Введите email" required />
             </div>
             <div class="form-group">
-              <label>👋 Имя</label>
+              <label>Имя</label>
               <input name="name" placeholder="Введите имя" required />
             </div>
             <div class="form-group">
-              <label>📱 Телефон</label>
+              <label>Телефон</label>
               <input name="phone" placeholder="Введите телефон" />
             </div>
             <button type="submit" class="submit-btn">Создать аккаунт</button>
@@ -1937,8 +2206,8 @@ document.addEventListener('DOMContentLoaded', function() {
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\frontend\styles.css]
-[Размер: 11587 байт]
-[Дата изменения: 2025-10-21 13:55:05.045075]
+[Размер: 13049 байт]
+[Дата изменения: 2025-11-18 22:05:40.588764]
 
 :root { 
   --bg: #f8fafc; 
@@ -2144,6 +2413,85 @@ button:active {
 .card .duration {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* Стили для фотографий туров */
+.tour-images {
+  width: 100%;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.tour-images img {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+/* Стили для превью фотографий в форме */
+.images-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--error);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.remove-image-btn:hover {
+  background: #dc2626;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.form-group input[type="file"] {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  background: var(--card);
 }
 
 .card .available {
@@ -2552,7 +2900,7 @@ button:active {
 }
 
 .user-info.admin::after {
-  content: " 👑";
+  content: " Админ";
 }
 
 /* Стили для секции управления пользователями */
@@ -2672,12 +3020,17 @@ button:active {
 }
 
 
-
+.card-image {
+  width: 100%;
+  height: 250px; 
+  object-fit: cover;
+  display: block;
+}
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\Copy_Files_POSSIBLE_DANGER_RUN_ONLY_HERE.py]
 [Размер: 5446 байт]
-[Дата изменения: 2025-10-24 16:13:12.797683]
+[Дата изменения: 2025-11-09 17:19:09.038730]
 
 import os
 import sys
@@ -4066,6 +4419,98 @@ def test_password_reset_flow():
 
 -----
 
+[Файл: C:\Users\Тихон\Desktop\tourism-platform\tests\integration\test_integration.py]
+[Размер: 2529 байт]
+[Дата изменения: 2025-11-05 10:52:38.767299]
+
+import time
+import requests
+
+
+BASE_URL = "http://localhost"
+GATEWAY_HEALTH = f"{BASE_URL}/health"
+AUTH_BASE = f"{BASE_URL}/api/auth"
+TOURS_BASE = f"{BASE_URL}/api/tours"
+BOOKINGS_BASE = f"{BASE_URL}/api/bookings"
+
+
+def wait_for_gateway_ready(timeout_seconds: int = 60) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            resp = requests.get(GATEWAY_HEALTH, timeout=3)
+            if resp.status_code == 200:
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(2)
+    raise RuntimeError("Gateway did not become ready in time")
+
+
+def test_gateway_and_services_health():
+    wait_for_gateway_ready()
+
+    # Gateway health
+    r = requests.get(GATEWAY_HEALTH, timeout=3)
+    assert r.status_code == 200
+    assert "healthy" in r.text
+
+    # Downstream services via gateway
+    # Endpoints inferred from gateway nginx config and k8s probes
+    for path in [
+        "/api/auth/health",
+        "/api/tours/health",
+        "/api/bookings/health",
+    ]:
+        resp = requests.get(f"{BASE_URL}{path}", timeout=5)
+        assert resp.status_code == 200, f"{path} returned {resp.status_code}"
+        data = resp.json()
+        assert data.get("status") == "healthy"
+
+
+def test_auth_register_login_me_flow():
+    wait_for_gateway_ready()
+
+    # register
+    payload = {
+        "username": "int_user",
+        "password": "int_pass_123",
+        "email": "int_user@example.com",
+        "name": "Integration User",
+        "phone": "+10000000000"
+    }
+    r = requests.post(f"{AUTH_BASE}/users", json=payload, timeout=10)
+    # allow 201 (created) or 400 if already exists
+    assert r.status_code in (201, 400)
+
+    # login
+    r = requests.post(f"{AUTH_BASE}/login", json={"username": payload["username"], "password": payload["password"]}, timeout=10)
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # users/me
+    r = requests.get(f"{AUTH_BASE}/users/me", headers=headers, timeout=10)
+    assert r.status_code == 200
+    me = r.json()
+    assert me.get("username") == payload["username"]
+
+
+def test_list_tours_and_bookings_health_endpoints():
+    wait_for_gateway_ready()
+
+    # Tours list should be reachable (may be empty)
+    rt = requests.get(f"{TOURS_BASE}/tours", timeout=10)
+    assert rt.status_code == 200
+
+    # Bookings health reachable
+    rb = requests.get(f"{BOOKINGS_BASE}/health", timeout=10)
+    assert rb.status_code == 200
+
+
+
+-----
+
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tests\mobile\test_mobile_responsive.py]
 [Размер: 203 байт]
 [Дата изменения: 2025-10-29 15:40:16.433909]
@@ -4137,8 +4582,8 @@ def is_admin_user(username: str) -> bool:
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\src\database.py]
-[Размер: 1032 байт]
-[Дата изменения: 2025-10-24 13:00:31.689322]
+[Размер: 1747 байт]
+[Дата изменения: 2025-11-18 21:47:23.276013]
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
@@ -4147,7 +4592,22 @@ from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:password@localhost:5432/tours_db")
+# Строим DATABASE_URL из переменных окружения или используем готовый
+def get_database_url():
+    # Если DATABASE_URL уже задан, используем его
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+    
+    # Иначе строим из отдельных переменных
+    postgres_user = os.getenv("POSTGRES_USER", "admin")
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
+    postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+    postgres_port = os.getenv("POSTGRES_PORT", "5432")
+    postgres_db = os.getenv("POSTGRES_DB", "tours_db")
+    
+    return f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+
+DATABASE_URL = get_database_url()
 
 engine = create_engine(
     DATABASE_URL,
@@ -4179,8 +4639,8 @@ def get_db():
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\src\main.py]
-[Размер: 6097 байт]
-[Дата изменения: 2025-10-29 14:52:36.988001]
+[Размер: 7254 байт]
+[Дата изменения: 2025-11-18 21:47:23.276013]
 
 # tours-service/src/main.py
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -4197,6 +4657,28 @@ from .database import SessionLocal, engine, get_db
 from . import auth_utils
 
 # Таблицы создаются в init.sql при инициализации БД
+
+# Автоматическая миграция: добавляем поле images если его нет
+def migrate_database():
+    try:
+        with engine.begin() as conn:  # begin() автоматически коммитит транзакцию
+            # Проверяем, существует ли колонка images
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'tours' 
+                AND column_name = 'images'
+            """))
+            if result.fetchone() is None:
+                # Добавляем колонку images
+                conn.execute(text("ALTER TABLE tours ADD COLUMN images TEXT[]"))
+                print("✅ Миграция: поле images добавлено в таблицу tours")
+    except Exception as e:
+        print(f"⚠️ Ошибка миграции (возможно, таблица еще не создана): {e}")
+
+# Выполняем миграцию при старте
+migrate_database()
 
 app = FastAPI(
     title="Tours Service",
@@ -4287,7 +4769,8 @@ async def create_tour(
         price=tour.price,
         duration_days=tour.duration_days,
         available=tour.available,
-        features=tour.features
+        features=tour.features,
+        images=tour.images
     )
     
     db.add(db_tour)
@@ -4367,8 +4850,8 @@ if __name__ == "__main__":
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\src\models.py]
-[Размер: 871 байт]
-[Дата изменения: 2025-10-21 13:35:43.256705]
+[Размер: 945 байт]
+[Дата изменения: 2025-11-18 21:34:35.976423]
 
 # tours-service/src/models.py
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, Text
@@ -4389,13 +4872,14 @@ class Tour(Base):
     duration_days = Column(Integer, nullable=False)
     available = Column(Boolean, default=True)
     features = Column(ARRAY(Text))
+    images = Column(ARRAY(Text))  # Массив URL фотографий
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\tours-service\src\schemas.py]
-[Размер: 1000 байт]
-[Дата изменения: 2025-10-21 13:35:43.262243]
+[Размер: 1233 байт]
+[Дата изменения: 2025-11-18 21:34:35.977518]
 
 # tours-service/src/schemas.py
 from pydantic import BaseModel
@@ -4411,6 +4895,7 @@ class TourCreate(BaseModel):
     available: bool = True
     # Use default_factory to avoid shared mutable default between instances
     features: Optional[List[str]] = None
+    images: Optional[List[str]] = None  # Массив URL фотографий
 
 class TourUpdate(BaseModel):
     title: Optional[str] = None
@@ -4420,6 +4905,7 @@ class TourUpdate(BaseModel):
     duration_days: Optional[int] = None
     available: Optional[bool] = None
     features: Optional[List[str]] = None
+    images: Optional[List[str]] = None  # Массив URL фотографий
 
 class Tour(BaseModel):
     id: int
@@ -4430,6 +4916,7 @@ class Tour(BaseModel):
     duration_days: int
     available: bool
     features: Optional[List[str]]
+    images: Optional[List[str]]  # Массив URL фотографий
     created_at: datetime
     updated_at: datetime
 
@@ -4860,8 +5347,8 @@ tail -f cleanup.log
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\infrastructure\init.sql]
-[Размер: 2543 байт]
-[Дата изменения: 2025-10-24 13:32:08.645055]
+[Размер: 2604 байт]
+[Дата изменения: 2025-11-18 21:34:35.977518]
 
 -- infrastructure/init.sql
 -- Создаем базы данных
@@ -4892,6 +5379,7 @@ CREATE TABLE IF NOT EXISTS tours (
     duration_days INTEGER NOT NULL,
     available BOOLEAN DEFAULT true,
     features TEXT[],
+    images TEXT[],  -- Массив URL фотографий
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -4931,8 +5419,8 @@ CREATE INDEX IF NOT EXISTS idx_bookings_booking_date ON bookings(booking_date);
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\configmap.yaml]
-[Размер: 2958 байт]
-[Дата изменения: 2025-10-30 20:19:46.954667]
+[Размер: 3383 байт]
+[Дата изменения: 2025-11-18 21:47:23.276013]
 
 apiVersion: v1
 kind: ConfigMap
@@ -4970,9 +5458,17 @@ data:
         duration_days INTEGER NOT NULL,
         available BOOLEAN DEFAULT true,
         features TEXT[],
+        images TEXT[],  -- Массив URL фотографий
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    -- Добавляем поле images если таблица уже существует
+    DO $$ 
+    BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tours' AND column_name = 'images') THEN
+            ALTER TABLE tours ADD COLUMN images TEXT[];
+        END IF;
+    END $$;
 
     -- booking_db (бронирования)
     \c booking_db;
@@ -5010,8 +5506,8 @@ data:
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\frontend.yaml]
-[Размер: 1473 байт]
-[Дата изменения: 2025-10-31 22:12:45.865580]
+[Размер: 1316 байт]
+[Дата изменения: 2025-11-18 14:02:03.961222]
 
 apiVersion: v1
 kind: Service
@@ -5074,13 +5570,6 @@ spec:
     http:
       paths:
       - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: frontend
-            port:
-              number: 80
-      - path: /api
         pathType: Prefix
         backend:
           service:
@@ -5256,8 +5745,8 @@ data:
 -----
 
 [Файл: C:\Users\Тихон\Desktop\tourism-platform\k8s\services-backend.yaml]
-[Размер: 5527 байт]
-[Дата изменения: 2025-10-30 21:32:29.999605]
+[Размер: 5600 байт]
+[Дата изменения: 2025-11-18 21:47:23.276013]
 
 apiVersion: v1
 kind: Service
@@ -5381,8 +5870,6 @@ spec:
             secretKeyRef:
               name: platform-secrets
               key: JWT_ALGORITHM
-        - name: DATABASE_URL
-          value: "postgresql://admin:password@postgres:5432/tours_db"
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
@@ -5393,6 +5880,12 @@ spec:
             secretKeyRef:
               name: platform-secrets
               key: POSTGRES_PASSWORD
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "tours_db"
         readinessProbe:
           httpGet:
             path: /health

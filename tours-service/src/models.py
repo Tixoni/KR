@@ -17,5 +17,6 @@ class Tour(Base):
     duration_days = Column(Integer, nullable=False)
     available = Column(Boolean, default=True)
     features = Column(ARRAY(Text))
+    images = Column(ARRAY(Text))  # Массив URL фотографий
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

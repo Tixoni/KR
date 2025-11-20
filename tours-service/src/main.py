@@ -14,6 +14,28 @@ from . import auth_utils
 
 # Таблицы создаются в init.sql при инициализации БД
 
+# Автоматическая миграция: добавляем поле images если его нет
+def migrate_database():
+    try:
+        with engine.begin() as conn:  # begin() автоматически коммитит транзакцию
+            # Проверяем, существует ли колонка images
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'tours' 
+                AND column_name = 'images'
+            """))
+            if result.fetchone() is None:
+                # Добавляем колонку images
+                conn.execute(text("ALTER TABLE tours ADD COLUMN images TEXT[]"))
+                print("✅ Миграция: поле images добавлено в таблицу tours")
+    except Exception as e:
+        print(f"⚠️ Ошибка миграции (возможно, таблица еще не создана): {e}")
+
+# Выполняем миграцию при старте
+migrate_database()
+
 app = FastAPI(
     title="Tours Service",
     description="Microservice for managing tours",
@@ -103,7 +125,8 @@ async def create_tour(
         price=tour.price,
         duration_days=tour.duration_days,
         available=tour.available,
-        features=tour.features
+        features=tour.features,
+        images=tour.images
     )
     
     db.add(db_tour)

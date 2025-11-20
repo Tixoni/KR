@@ -34,9 +34,17 @@ data:
         duration_days INTEGER NOT NULL,
         available BOOLEAN DEFAULT true,
         features TEXT[],
+        images TEXT[],  -- Массив URL фотографий
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    -- Добавляем поле images если таблица уже существует
+    DO $$ 
+    BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tours' AND column_name = 'images') THEN
+            ALTER TABLE tours ADD COLUMN images TEXT[];
+        END IF;
+    END $$;
 
     -- booking_db (бронирования)
     \c booking_db;

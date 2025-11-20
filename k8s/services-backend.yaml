@@ -120,8 +120,6 @@ spec:
             secretKeyRef:
               name: platform-secrets
               key: JWT_ALGORITHM
-        - name: DATABASE_URL
-          value: "postgresql://admin:password@postgres:5432/tours_db"
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
@@ -132,6 +130,12 @@ spec:
             secretKeyRef:
               name: platform-secrets
               key: POSTGRES_PASSWORD
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "tours_db"
         readinessProbe:
           httpGet:
             path: /health

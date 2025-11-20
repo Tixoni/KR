@@ -5,7 +5,22 @@ from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:password@localhost:5432/tours_db")
+# Строим DATABASE_URL из переменных окружения или используем готовый
+def get_database_url():
+    # Если DATABASE_URL уже задан, используем его
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+    
+    # Иначе строим из отдельных переменных
+    postgres_user = os.getenv("POSTGRES_USER", "admin")
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
+    postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+    postgres_port = os.getenv("POSTGRES_PORT", "5432")
+    postgres_db = os.getenv("POSTGRES_DB", "tours_db")
+    
+    return f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+
+DATABASE_URL = get_database_url()
 
 engine = create_engine(
     DATABASE_URL,

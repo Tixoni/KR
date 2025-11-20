@@ -73,7 +73,7 @@ function handleUnauthorized() {
 // Функция проверки роли администратора
 function isAdmin() {
   const isAdminUser = currentUser && ADMIN_USERS.includes(currentUser.username);
-  console.log('🔍 Проверка прав администратора:', {
+  console.log('Проверка прав администратора:', {
     currentUser: currentUser?.username,
     isAdmin: isAdminUser,
     adminUsers: ADMIN_USERS
@@ -96,7 +96,7 @@ function updateAuthState(isAuthenticated) {
     
     // Показываем секцию администратора только для админов
     if (isAdmin()) {
-      console.log('👑 Показываем секцию администратора');
+      console.log('Показываем секцию администратора');
       adminSection.classList.remove('hidden');
       // Показываем кнопку создания тура
       const createButton = document.getElementById('create-tour-button');
@@ -106,7 +106,7 @@ function updateAuthState(isAuthenticated) {
       // Загружаем список пользователей для администратора
       loadUsers();
     } else {
-      console.log('👤 Скрываем секцию администратора');
+      console.log('Скрываем секцию администратора');
       adminSection.classList.add('hidden');
       // Скрываем кнопку создания тура
       const createButton = document.getElementById('create-tour-button');
@@ -131,7 +131,7 @@ function updateAuthState(isAuthenticated) {
 
 async function loadCurrentUser() {
   try {
-    console.log('👤 Загружаем данные пользователя...');
+    console.log('Загружаем данные пользователя...');
     const res = await fetch('/api/auth/users/me', { headers: authHeader() });
     console.log('Response status:', res.status);
     
@@ -193,7 +193,7 @@ async function loadTours(){
     const isAuthenticated = !!getToken();
     const isAdminUser = isAdmin();
     
-    console.log('🔍 Состояние при загрузке туров:', {
+    console.log('Состояние при загрузке туров:', {
       isAuthenticated,
       isAdminUser,
       currentUser: currentUser?.username,
@@ -201,20 +201,26 @@ async function loadTours(){
     });
     
   root.innerHTML = data.map(t => {
-    console.log(`🔍 Обрабатываем тур ${t.id}:`, {
+    console.log(`Обрабатываем тур ${t.id}:`, {
       title: t.title,
       isAdminUser,
       isAuthenticated
     });
     
     return `<div class="card">
+        ${t.images && t.images.length > 0 ? 
+          `<div class="tour-images">
+            ${t.images.map(img => `<img src="${escapeHtml(img)}" alt="${escapeHtml(t.title)}" onerror="this.style.display='none'" />`).join('')}
+          </div>` : 
+          ''
+        }
         <h4>${escapeHtml(t.title)}</h4>
-        <div class="destination">📍 ${escapeHtml(t.destination)}</div>
+        <div class="destination">${escapeHtml(t.destination)}</div>
         ${t.description ? `<div class="description">${escapeHtml(t.description)}</div>` : ''}
         <div class="price">${t.price} ₽</div>
-        <div class="duration">⏱️ ${t.duration_days} дней</div>
+        <div class="duration">${t.duration_days} дней</div>
         <div class="available ${t.available ? 'true' : 'false'}">
-          ${t.available ? '✅ Доступен' : '❌ Недоступен'}
+          ${t.available ? 'Доступен' : 'Недоступен'}
         </div>
         ${t.features && t.features.length > 0 ? 
           `<div class="features">${t.features.map(f => `• ${escapeHtml(f)}`).join('<br>')}</div>` : 
@@ -222,12 +228,12 @@ async function loadTours(){
         }
         <div class="card-actions">
           <button class="book-btn" onclick="bookTour(${t.id})" ${!t.available || !isAuthenticated ? 'disabled' : ''}>
-            ${!isAuthenticated ? '🔒 Войдите для бронирования' : !t.available ? '❌ Недоступен' : '🎯 Забронировать'}
+            ${!isAuthenticated ? 'Войдите для бронирования' : !t.available ? 'Недоступен' : 'Забронировать'}
           </button>
           ${isAdminUser ? `
             <div class="admin-actions">
-              <button class="edit-btn" onclick="editTour(${t.id})">✏️ Редактировать</button>
-              <button class="delete-btn" onclick="deleteTour(${t.id})">🗑️ Удалить</button>
+              <button class="edit-btn" onclick="editTour(${t.id})">Редактировать</button>
+              <button class="delete-btn" onclick="deleteTour(${t.id})">Удалить</button>
             </div>
           ` : ''}
         </div>
@@ -309,16 +315,16 @@ async function bookTour(tourId) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`✅ Тур "${tour.title}" успешно забронирован!`);
+      alert(`Тур "${tour.title}" успешно забронирован!`);
     } else {
-      console.log(`✅ Тур "${tour.title}" успешно забронирован!`);
+      console.log(`Тур "${tour.title}" успешно забронирован!`);
     }
     loadTours(); // Обновляем список туров
   } catch (error) {
     console.error('Ошибка бронирования:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка бронирования: ${error.message}`);
+      alert(`Ошибка бронирования: ${error.message}`);
     }
   }
 }
@@ -327,12 +333,47 @@ async function bookTour(tourId) {
 async function handleTourForm(e){
   e.preventDefault();
   try {
-    console.log('🔧 Обработка формы тура...');
+    console.log('Обработка формы тура...');
   const form = e.target;
     const tourId = document.getElementById('tour-id').value;
     console.log('Tour ID:', tourId);
     
   const features = (form.features.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  
+  // Обработка фотографий
+  let images = [];
+  
+  // Получаем URL из текстового поля
+  const urlsInput = document.getElementById('images-urls');
+  if (urlsInput && urlsInput.value.trim()) {
+    const urls = urlsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    images.push(...urls);
+  }
+  
+  // Конвертируем загруженные файлы в data URL
+  const fileInput = document.getElementById('images-upload');
+  if (fileInput && fileInput.files && fileInput.files.length > 0) {
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB на файл
+    const files = Array.from(fileInput.files);
+    
+    // Проверяем размер файлов
+    const oversizedFiles = files.filter(file => file.size > MAX_FILE_SIZE);
+    if (oversizedFiles.length > 0) {
+      throw new Error(`Файлы слишком большие. Максимальный размер: 5MB. Большие файлы: ${oversizedFiles.map(f => f.name).join(', ')}`);
+    }
+    
+    const filePromises = files.map(file => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    });
+    const dataUrls = await Promise.all(filePromises);
+    images.push(...dataUrls.filter(url => url !== null));
+  }
+  
   const payload = {
     title: form.title.value,
     destination: form.destination.value,
@@ -340,6 +381,7 @@ async function handleTourForm(e){
     duration_days: Number(form.duration_days.value),
     description: form.description.value || null,
     features: features.length? features : null,
+    images: images.length > 0 ? images : null,
     available: true
   };
     
@@ -348,7 +390,7 @@ async function handleTourForm(e){
     let res;
     if (tourId) {
       // Редактирование существующего тура
-      console.log('🔄 Редактирование тура:', tourId);
+      console.log('Редактирование тура:', tourId);
       console.log('Текущий пользователь:', currentUser);
       console.log('Токен авторизации:', getToken() ? 'Есть' : 'Нет');
       console.log('Заголовки запроса:', {...{'Content-Type': 'application/json'}, ...authHeader()});
@@ -359,7 +401,7 @@ async function handleTourForm(e){
       });
     } else {
       // Создание нового тура
-      console.log('➕ Создание нового тура');
+      console.log('Создание нового тура');
       console.log('Текущий пользователь:', currentUser);
       console.log('Токен авторизации:', getToken() ? 'Есть' : 'Нет');
       res = await fetch('/api/tours/tours', { 
@@ -386,7 +428,7 @@ async function handleTourForm(e){
     }
     
     const statusText = tourId ? 'Тур обновлен' : 'Тур создан';
-    document.getElementById('admin-tour-status').textContent = `✅ ${statusText}`;
+    document.getElementById('admin-tour-status').textContent = `${statusText}`;
     document.getElementById('admin-tour-status').className = 'status success';
     
     form.reset();
@@ -395,7 +437,7 @@ async function handleTourForm(e){
     loadTours();
   } catch (error) {
     console.error('Ошибка обработки тура:', error);
-    document.getElementById('admin-tour-status').textContent = `❌ Ошибка: ${error.message}`;
+    document.getElementById('admin-tour-status').textContent = `Ошибка: ${error.message}`;
     document.getElementById('admin-tour-status').className = 'status error';
   }
 }
@@ -404,7 +446,7 @@ async function handleTourForm(e){
 async function editTour(tourId) {
   lala_eagle.play();
   try {
-    console.log('✏️ Редактирование тура:', tourId);
+    console.log('Редактирование тура:', tourId);
     const res = await fetch(`/api/tours/tours/${tourId}`, { headers: authHeader() });
     console.log('Response status:', res.status);
     
@@ -425,28 +467,39 @@ async function editTour(tourId) {
     document.querySelector('textarea[name="description"]').value = tour.description || '';
     document.querySelector('input[name="features"]').value = tour.features ? tour.features.join(', ') : '';
     
+    // Заполняем фотографии
+    const imagesUrlsInput = document.getElementById('images-urls');
+    if (imagesUrlsInput && tour.images && tour.images.length > 0) {
+      imagesUrlsInput.value = tour.images.join(', ');
+      // Показываем превью существующих фотографий
+      updateImagesPreview(tour.images);
+    } else if (imagesUrlsInput) {
+      imagesUrlsInput.value = '';
+      document.getElementById('images-preview').innerHTML = '';
+    }
+    
     // Обновляем интерфейс формы
-    document.getElementById('admin-form-title').textContent = '✏️ Редактировать тур';
+    document.getElementById('admin-form-title').textContent = 'Редактировать тур';
     document.getElementById('submit-tour-btn').textContent = 'Обновить тур';
     document.getElementById('cancel-edit-btn').classList.remove('hidden');
     
     // Прокручиваем к форме
     document.getElementById('admin-section').scrollIntoView({ behavior: 'smooth' });
     
-    console.log('✅ Форма заполнена для редактирования');
+    console.log('Форма заполнена для редактирования');
     
   } catch (error) {
     console.error('Ошибка загрузки тура для редактирования:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка: ${error.message}`);
+      alert(`Ошибка: ${error.message}`);
     }
   }
 }
 
 // Удаление тура
 async function deleteTour(tourId) {
-  console.log('🗑️ Удаление тура:', tourId);
+  console.log('Удаление тура:', tourId);
   
   // Убираем подтверждение для localhost
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -472,16 +525,16 @@ async function deleteTour(tourId) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('✅ Тур успешно удален!');
+      alert('Тур успешно удален!');
     } else {
-      console.log('✅ Тур успешно удален!');
+      console.log('Тур успешно удален!');
     }
     loadTours();
   } catch (error) {
     console.error('Ошибка удаления тура:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка удаления: ${error.message}`);
+      alert(`Ошибка удаления: ${error.message}`);
     }
   }
 }
@@ -493,17 +546,54 @@ function cancelEditTour() {
 
 // Сброс формы к состоянию создания
 function resetTourForm() {
-  document.getElementById('admin-form-title').textContent = '➕ Создать новый тур';
+  document.getElementById('admin-form-title').textContent = 'Создать новый тур';
   document.getElementById('submit-tour-btn').textContent = 'Создать тур';
   document.getElementById('cancel-edit-btn').classList.add('hidden');
   document.getElementById('tour-id').value = '';
   document.getElementById('admin-tour-status').textContent = '';
   document.getElementById('admin-tour-status').className = 'status';
+  
+  // Очищаем фотографии
+  const imagesUrlsInput = document.getElementById('images-urls');
+  const imagesUploadInput = document.getElementById('images-upload');
+  const imagesPreview = document.getElementById('images-preview');
+  if (imagesUrlsInput) imagesUrlsInput.value = '';
+  if (imagesUploadInput) imagesUploadInput.value = '';
+  if (imagesPreview) imagesPreview.innerHTML = '';
+}
+
+// Функция для обновления превью фотографий
+function updateImagesPreview(imageUrls) {
+  const preview = document.getElementById('images-preview');
+  if (!preview) return;
+  
+  if (!imageUrls || imageUrls.length === 0) {
+    preview.innerHTML = '';
+    return;
+  }
+  
+  preview.innerHTML = imageUrls.map((url, index) => 
+    `<div class="image-preview-item">
+      <img src="${escapeHtml(url)}" alt="Preview ${index + 1}" onerror="this.parentElement.remove()" />
+      <button type="button" class="remove-image-btn" onclick="removeImagePreview(${index})">×</button>
+    </div>`
+  ).join('');
+}
+
+// Функция для удаления фотографии из превью
+function removeImagePreview(index) {
+  const imagesUrlsInput = document.getElementById('images-urls');
+  if (imagesUrlsInput && imagesUrlsInput.value) {
+    const urls = imagesUrlsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    urls.splice(index, 1);
+    imagesUrlsInput.value = urls.join(', ');
+    updateImagesPreview(urls);
+  }
 }
 
 async function loadBookings(){
   if (!getToken()) {
-    document.getElementById('bookings-list').innerHTML = '<div class="card error">🔒 Войдите в систему для просмотра бронирований</div>';
+    document.getElementById('bookings-list').innerHTML = '<div class="card error">Войдите в систему для просмотра бронирований</div>';
     return;
   }
   
@@ -519,7 +609,7 @@ async function loadBookings(){
       // Если токен истек (401), выходим из системы
       if (res.status === 401) {
         handleUnauthorized();
-        document.getElementById('bookings-list').innerHTML = '<div class="card error">🔒 Сессия истекла. Войдите в систему заново.</div>';
+        document.getElementById('bookings-list').innerHTML = '<div class="card error">Сессия истекла. Войдите в систему заново.</div>';
         return;
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -529,7 +619,7 @@ async function loadBookings(){
   const root = document.getElementById('bookings-list');
     
     if (data.length === 0) {
-      root.innerHTML = '<div class="card">📋 У вас пока нет бронирований</div>';
+      root.innerHTML = '<div class="card">У вас пока нет бронирований</div>';
       return;
     }
     
@@ -543,7 +633,7 @@ async function loadBookings(){
     if (activeBookings.length > 0) {
       html += `
         <div class="bookings-section">
-          <h3>📋 Актуальные бронирования</h3>
+          <h3>Актуальные бронирования</h3>
           <div class="bookings-grid">
             ${activeBookings.map(b => createBookingCard(b)).join('')}
           </div>
@@ -555,7 +645,7 @@ async function loadBookings(){
     if (cancelledBookings.length > 0) {
       html += `
         <div class="bookings-section">
-          <h3>❌ Отменённые бронирования</h3>
+          <h3>Отменённые бронирования</h3>
           <div class="bookings-grid cancelled">
             ${cancelledBookings.map(b => createBookingCard(b)).join('')}
           </div>
@@ -564,7 +654,7 @@ async function loadBookings(){
     }
     
     if (activeBookings.length === 0 && cancelledBookings.length === 0) {
-      html = '<div class="card">📋 У вас пока нет бронирований</div>';
+      html = '<div class="card">У вас пока нет бронирований</div>';
     }
     
     root.innerHTML = html;
@@ -578,20 +668,20 @@ async function loadBookings(){
 function createBookingCard(b) {
   return `
     <div class="card booking-card ${b.status}">
-      <h4>🎫 Бронь #${b.id}</h4>
+      <h4>Бронь #${b.id}</h4>
       <div class="booking-info">
-        <div>🏨 Тур: ${b.title}</div>
-        <div>📅 Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
-        <div>👥 Участники: ${b.participants_count}</div>
-        <div class="price">💰 Сумма: ${b.total_price} ₽</div>
+        <div>Тур: ${b.title}</div>
+        <div>Дата поездки: ${new Date(b.travel_date).toLocaleDateString('ru-RU')}</div>
+        <div>Участники: ${b.participants_count}</div>
+        <div class="price">Сумма: ${b.total_price} ₽</div>
         <div class="status">
           <span class="status-badge ${b.status}">${getStatusText(b.status)}</span>
           <span class="payment-badge ${b.payment_status}">${getPaymentText(b.payment_status)}</span>
         </div>
       </div>
       <div class="booking-actions">
-        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">✅ Подтвердить</button>`:''}
-        ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">❌ Отменить</button>`:''}
+        ${b.status==='pending' ? `<button class="confirm-btn" onclick="confirmBooking(${b.id})">Подтвердить</button>`:''}
+        ${b.status!=='cancelled' && b.status!=='completed' ? `<button class="cancel-btn" onclick="cancelBooking(${b.id})">Отменить</button>`:''}
       </div>
     </div>
   `;
@@ -599,19 +689,19 @@ function createBookingCard(b) {
 
 function getStatusText(status) {
   const statusMap = {
-    'pending': '⏳ Ожидает',
-    'confirmed': '✅ Подтверждено',
-    'cancelled': '❌ Отменено',
-    'completed': '🎉 Завершено'
+    'pending': 'Ожидает',
+    'confirmed': 'Подтверждено',
+    'cancelled': 'Отменено',
+    'completed': 'Завершено'
   };
   return statusMap[status] || status;
 }
 
 function getPaymentText(status) {
   const paymentMap = {
-    'pending': '⏳ Ожидает оплаты',
-    'paid': '✅ Оплачено',
-    'refunded': '💸 Возвращено'
+    'pending': 'Ожидает оплаты',
+    'paid': 'Оплачено',
+    'refunded': 'Возвращено'
   };
   return paymentMap[status] || status;
 }
@@ -682,7 +772,7 @@ async function login(e){
     if (data.access_token) {
       lala_eagle.play(); // Воспроизводим звук при успешном входе
       setToken(data.access_token);
-      document.getElementById('login-status').textContent = '✅ Успешно!';
+      document.getElementById('login-status').textContent = 'Успешно!';
       document.getElementById('login-status').className = 'status success';
       form.reset();
       closeAuthModal();
@@ -691,7 +781,7 @@ async function login(e){
     }
   } catch (error) {
     console.error('Ошибка входа:', error);
-    document.getElementById('login-status').textContent = `❌ ${error.message}`;
+    document.getElementById('login-status').textContent = `${error.message}`;
     document.getElementById('login-status').className = 'status error';
   }
 }
@@ -714,14 +804,14 @@ async function registerUser(e){
       throw new Error(errorData.detail || `HTTP ${res.status}`);
     }
     
-    document.getElementById('register-status').textContent = '✅ Аккаунт создан!';
+    document.getElementById('register-status').textContent = 'Аккаунт создан!';
     document.getElementById('register-status').className = 'status success';
     form.reset();
     // Переключаемся на вкладку входа
     switchAuthTab('login');
   } catch (error) {
     console.error('Ошибка регистрации:', error);
-    document.getElementById('register-status').textContent = `❌ ${error.message}`;
+    document.getElementById('register-status').textContent = `${error.message}`;
     document.getElementById('register-status').className = 'status error';
   }
 }
@@ -764,7 +854,7 @@ async function createTestTour() {
 
 // Функция для показа формы создания тура
 function showCreateTourForm() {
-  console.log('📝 Показываем форму создания тура');
+  console.log('Показываем форму создания тура');
   console.log('Текущий пользователь:', currentUser);
   console.log('Токен:', !!getToken());
   console.log('Является админом:', isAdmin());
@@ -773,7 +863,7 @@ function showCreateTourForm() {
   if (!getToken()) {
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('❌ Необходимо войти в систему для создания тура');
+      alert('Необходимо войти в систему для создания тура');
     }
     toggleAuthModal();
     return;
@@ -783,7 +873,7 @@ function showCreateTourForm() {
   if (!isAdmin()) {
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert('❌ Только администраторы могут создавать туры');
+      alert('Только администраторы могут создавать туры');
     }
     return;
   }
@@ -798,18 +888,18 @@ function showCreateTourForm() {
   // Прокручиваем к форме
   adminSection.scrollIntoView({ behavior: 'smooth' });
   
-  console.log('✅ Форма создания тура показана');
+  console.log('Форма создания тура показана');
 }
 
 // Функции для управления пользователями
 async function loadUsers() {
   if (!getToken()) {
-    document.getElementById('users-list').innerHTML = '<div class="card error">🔒 Войдите в систему</div>';
+    document.getElementById('users-list').innerHTML = '<div class="card error">Войдите в систему</div>';
     return;
   }
   
   if (!isAdmin()) {
-    document.getElementById('users-list').innerHTML = '<div class="card error">❌ Недостаточно прав</div>';
+    document.getElementById('users-list').innerHTML = '<div class="card error">Недостаточно прав</div>';
     return;
   }
   
@@ -820,7 +910,7 @@ async function loadUsers() {
       // Если токен истек (401), выходим из системы
       if (res.status === 401) {
         handleUnauthorized();
-        document.getElementById('users-list').innerHTML = '<div class="card error">🔒 Сессия истекла. Войдите в систему заново.</div>';
+        document.getElementById('users-list').innerHTML = '<div class="card error">Сессия истекла. Войдите в систему заново.</div>';
         return;
       }
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -830,7 +920,7 @@ async function loadUsers() {
     const root = document.getElementById('users-list');
     
     if (users.length === 0) {
-      root.innerHTML = '<div class="card">👥 Пользователи не найдены</div>';
+      root.innerHTML = '<div class="card">Пользователи не найдены</div>';
       return;
     }
     
@@ -848,19 +938,19 @@ function createUserCard(user) {
   
   return `
     <div class="card user-card ${isCurrentUser ? 'current-user' : ''}">
-      <h4>👤 ${escapeHtml(user.username)} ${isCurrentUser ? '(Вы)' : ''}</h4>
+      <h4>${escapeHtml(user.username)} ${isCurrentUser ? '(Вы)' : ''}</h4>
       <div class="user-info">
-        <div>📧 ${escapeHtml(user.email)}</div>
-        <div>👋 ${escapeHtml(user.name)}</div>
-        ${user.phone ? `<div>📱 ${escapeHtml(user.phone)}</div>` : ''}
+        <div>${escapeHtml(user.email)}</div>
+        <div>${escapeHtml(user.name)}</div>
+        ${user.phone ? `<div>${escapeHtml(user.phone)}</div>` : ''}
         <div class="user-meta">
           <span class="user-id">ID: ${user.id}</span>
-          ${isAdminUser ? '<span class="admin-badge">👑 Админ</span>' : ''}
+          ${isAdminUser ? '<span class="admin-badge">Админ</span>' : ''}
         </div>
       </div>
       <div class="user-actions">
         ${!isCurrentUser && !isAdminUser ? `
-          <button class="delete-btn" onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')">🗑️ Удалить</button>
+          <button class="delete-btn" onclick="deleteUser(${user.id}, '${escapeHtml(user.username)}')">Удалить</button>
         ` : ''}
         ${isCurrentUser ? '<span class="current-user-text">Текущий пользователь</span>' : ''}
         ${isAdminUser && !isCurrentUser ? '<span class="admin-protected">Защищенный аккаунт</span>' : ''}
@@ -871,7 +961,7 @@ function createUserCard(user) {
 
 // Функция удаления пользователя
 async function deleteUser(userId, username) {
-  console.log('🗑️ Удаление пользователя:', userId, username);
+  console.log('Удаление пользователя:', userId, username);
   
   // Убираем подтверждение для localhost
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -897,16 +987,16 @@ async function deleteUser(userId, username) {
     
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`✅ Пользователь "${username}" успешно удален!`);
+      alert(`Пользователь "${username}" успешно удален!`);
     } else {
-      console.log(`✅ Пользователь "${username}" успешно удален!`);
+      console.log(`Пользователь "${username}" успешно удален!`);
     }
     loadUsers(); // Обновляем список пользователей
   } catch (error) {
     console.error('Ошибка удаления пользователя:', error);
     // Убираем alert для localhost
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      alert(`❌ Ошибка удаления: ${error.message}`);
+      alert(`Ошибка удаления: ${error.message}`);
     }
   }
 }
@@ -931,6 +1021,52 @@ document.addEventListener('DOMContentLoaded', function() {
       closeAuthModal();
     }
   });
+  
+  // Обработчик загрузки файлов для предпросмотра
+  const imagesUploadInput = document.getElementById('images-upload');
+  if (imagesUploadInput) {
+    imagesUploadInput.addEventListener('change', async function(e) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+      
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB на файл
+      const oversizedFiles = files.filter(file => file.size > MAX_FILE_SIZE);
+      
+      if (oversizedFiles.length > 0) {
+        alert(`Некоторые файлы слишком большие (максимум 5MB на файл): ${oversizedFiles.map(f => f.name).join(', ')}`);
+        e.target.value = ''; // Очищаем input
+        return;
+      }
+      
+      const filePromises = files.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      });
+      
+      const dataUrls = await Promise.all(filePromises);
+      const validUrls = dataUrls.filter(url => url !== null);
+      
+      // Добавляем к существующим URL
+      const imagesUrlsInput = document.getElementById('images-urls');
+      const existingUrls = imagesUrlsInput.value ? imagesUrlsInput.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const allUrls = [...existingUrls, ...validUrls];
+      imagesUrlsInput.value = allUrls.join(', ');
+      updateImagesPreview(allUrls);
+    });
+  }
+  
+  // Обработчик изменения текстового поля с URL
+  const imagesUrlsInput = document.getElementById('images-urls');
+  if (imagesUrlsInput) {
+    imagesUrlsInput.addEventListener('input', function(e) {
+      const urls = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+      updateImagesPreview(urls);
+    });
+  }
   
   // Добавляем кнопки для отладки (только для localhost)
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {

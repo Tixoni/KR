@@ -12,6 +12,7 @@ class TourCreate(BaseModel):
     available: bool = True
     # Use default_factory to avoid shared mutable default between instances
     features: Optional[List[str]] = None
+    images: Optional[List[str]] = None  # Массив URL фотографий
 
 class TourUpdate(BaseModel):
     title: Optional[str] = None
@@ -21,6 +22,7 @@ class TourUpdate(BaseModel):
     duration_days: Optional[int] = None
     available: Optional[bool] = None
     features: Optional[List[str]] = None
+    images: Optional[List[str]] = None  # Массив URL фотографий
 
 class Tour(BaseModel):
     id: int
@@ -31,6 +33,7 @@ class Tour(BaseModel):
     duration_days: int
     available: bool
     features: Optional[List[str]]
+    images: Optional[List[str]]  # Массив URL фотографий
     created_at: datetime
     updated_at: datetime
 

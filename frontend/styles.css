@@ -204,6 +204,85 @@ button:active {
   font-size: 0.9rem;
 }
 
+/* Стили для фотографий туров */
+.tour-images {
+  width: 100%;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.tour-images img {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+/* Стили для превью фотографий в форме */
+.images-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--error);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.remove-image-btn:hover {
+  background: #dc2626;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.form-group input[type="file"] {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  background: var(--card);
+}
+
 .card .available {
   display: inline-block;
   padding: 4px 8px;
@@ -610,7 +689,7 @@ button:active {
 }
 
 .user-info.admin::after {
-  content: " 👑";
+  content: " Админ";
 }
 
 /* Стили для секции управления пользователями */
@@ -730,3 +809,9 @@ button:active {
 }
 
 
+.card-image {
+  width: 100%;
+  height: 250px; 
+  object-fit: cover;
+  display: block;
+}

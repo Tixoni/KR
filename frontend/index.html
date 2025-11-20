@@ -8,12 +8,12 @@
   </head>
   <body>
     <header class="container header">
-      <h1>🌍 Tourism Platform</h1>
+      <h1>Tourism Platform</h1>
       <nav>
         <a href="#tours" onclick="showSection('tours')">Туры</a>
         <a href="#bookings" onclick="showSection('bookings')" id="bookings-nav" class="auth-required">Мои бронирования</a>
         <div class="user-section">
-          <span id="user-display" class="user-info hidden">Привет, <span id="username-display"></span>!</span>
+          <span id="user-display" class="user-info hidden">Добро пожаловать, <span id="username-display"></span>!</span>
           <button id="auth-btn" class="auth-btn" onclick="toggleAuthModal()">Войти</button>
           <button id="logout-btn" class="logout-btn hidden" onclick="logout()">Выйти</button>
         </div>
@@ -22,16 +22,16 @@
 
     <main class="container">
       <section id="section-tours" class="section">
-        <h2>🌴 Наши туры</h2>
+        <h2>Наши туры</h2>
         <div class="controls">
-          <input id="filter-destination" placeholder="🔍 Поиск по направлению..." />
+          <input id="filter-destination" placeholder="Поиск по направлению..." />
           <button onclick="loadTours()">Найти туры</button>
         </div>
         <div id="tours-list" class="cards"></div>
         
         <!-- Форма создания/редактирования тура (только для администраторов) -->
         <div id="admin-section" class="admin-section hidden">
-          <h3 id="admin-form-title">➕ Создать новый тур</h3>
+          <h3 id="admin-form-title">Создать новый тур</h3>
           <form id="admin-tour-form" onsubmit="handleTourForm(event)">
             <input type="hidden" id="tour-id" name="tour_id" />
             <div class="grid">
@@ -42,6 +42,12 @@
             </div>
             <textarea name="description" placeholder="Описание тура"></textarea>
             <input name="features" placeholder="Особенности (через запятую)" />
+            <div class="form-group">
+              <label>Фотографии (URL через запятую или загрузите файлы, макс. 5MB на файл)</label>
+              <input type="text" name="images-urls" id="images-urls" placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg" />
+              <input type="file" id="images-upload" name="images-upload" multiple accept="image/*" />
+              <div id="images-preview" class="images-preview"></div>
+            </div>
             <div class="form-actions">
               <button type="submit" id="submit-tour-btn">Создать тур</button>
               <button type="button" id="cancel-edit-btn" class="cancel-btn hidden" onclick="cancelEditTour()">Отменить</button>
@@ -51,9 +57,9 @@
           
           <!-- Секция управления пользователями -->
           <div class="admin-users-section">
-            <h3>👥 Управление пользователями</h3>
+            <h3>Управление пользователями</h3>
             <div class="controls">
-              <button onclick="loadUsers()">🔄 Обновить список</button>
+              <button onclick="loadUsers()">Обновить список</button>
             </div>
             <div id="users-list" class="cards"></div>
           </div>
@@ -61,9 +67,9 @@
       </section>
 
       <section id="section-bookings" class="section hidden">
-        <h2>📋 Мои бронирования</h2>
+        <h2>Мои бронирования</h2>
         <div class="controls">
-          <button onclick="loadBookings()">🔄 Обновить</button>
+          <button onclick="loadBookings()">Обновить</button>
         </div>
         <div id="bookings-list" class="cards"></div>
       </section>
@@ -74,7 +80,7 @@
     <div id="auth-modal" class="modal hidden">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>🔐 Авторизация</h2>
+          <h2>Авторизация</h2>
           <button class="close-btn" onclick="closeAuthModal()">&times;</button>
         </div>
         
@@ -86,11 +92,11 @@
         <div id="login-tab" class="auth-tab active">
           <form id="login-form" onsubmit="login(event)">
             <div class="form-group">
-              <label>👤 Логин</label>
+              <label>Логин</label>
               <input name="username" placeholder="Введите логин" required />
             </div>
             <div class="form-group">
-              <label>🔒 Пароль</label>
+              <label>Пароль</label>
               <input name="password" type="password" placeholder="Введите пароль" required />
             </div>
             <button type="submit" class="submit-btn">Войти</button>
@@ -101,23 +107,23 @@
         <div id="register-tab" class="auth-tab">
           <form id="register-form" onsubmit="registerUser(event)">
             <div class="form-group">
-              <label>👤 Логин</label>
+              <label>Логин</label>
               <input name="username" placeholder="Введите логин" required />
             </div>
             <div class="form-group">
-              <label>🔒 Пароль</label>
+              <label>Пароль</label>
               <input name="password" type="password" placeholder="Введите пароль" required />
             </div>
             <div class="form-group">
-              <label>📧 Email</label>
+              <label>Email</label>
               <input name="email" type="email" placeholder="Введите email" required />
             </div>
             <div class="form-group">
-              <label>👋 Имя</label>
+              <label>Имя</label>
               <input name="name" placeholder="Введите имя" required />
             </div>
             <div class="form-group">
-              <label>📱 Телефон</label>
+              <label>Телефон</label>
               <input name="phone" placeholder="Введите телефон" />
             </div>
             <button type="submit" class="submit-btn">Создать аккаунт</button>

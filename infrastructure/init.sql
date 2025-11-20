@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tours (
     duration_days INTEGER NOT NULL,
     available BOOLEAN DEFAULT true,
     features TEXT[],
+    images TEXT[],  -- Массив URL фотографий
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

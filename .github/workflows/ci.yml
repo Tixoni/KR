@@ -455,4 +455,29 @@ jobs:
           chmod +x k8s/deploy.sh
           ./k8s/deploy.sh
 
+      - name: Display access information
+        run: |
+          echo "=========================================="
+          echo "🚀 Deployment completed successfully!"
+          echo "=========================================="
+          echo ""
+          echo "To access the frontend, use one of these methods:"
+          echo ""
+          echo "📌 Method 1: Port-forward (recommended)"
+          echo "   kubectl port-forward -n tourism service/frontend 8080:80"
+          echo "   Then open: http://localhost:8080"
+          echo ""
+          echo "📌 Method 2: Via Ingress (if Traefik is configured)"
+          echo "   1. Add to /etc/hosts: 127.0.0.1 tourism.local"
+          echo "   2. Open: http://tourism.local"
+          echo ""
+          echo "📌 Method 3: Get service endpoints"
+          echo "   kubectl get svc -n tourism"
+          echo "   kubectl get ingress -n tourism"
+          echo ""
+          echo "📌 Method 4: Port-forward all services"
+          echo "   kubectl port-forward -n tourism service/frontend 8080:80 &"
+          echo "   kubectl port-forward -n tourism service/gateway 8081:8080 &"
+          echo ""
+
 
