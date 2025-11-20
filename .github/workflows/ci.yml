@@ -1,6 +1,5 @@
 name: CD Deploy
 
-
 on:
   push:
     branches:
@@ -39,8 +38,6 @@ jobs:
           python --version
           which python || where python
 
-      # Remove cache action to avoid action download failures on self-hosted runner
-
       - name: Install test deps
         run: |
           python -m pip install --upgrade pip
@@ -52,7 +49,6 @@ jobs:
           PYTHONPATH: .
         run: pytest -q -n auto
 
-        
   frontend-unit-tests:
     needs: [unit-tests]
     runs-on: self-hosted
@@ -70,25 +66,11 @@ jobs:
       - name: Run frontend unit tests
         run: pytest -q -n auto tests/frontend
 
-  frontend-e2e-tests:
-    needs: [frontend-unit-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run frontend e2e tests (placeholder)
-        run: pytest -q -n auto tests/frontend_e2e
+  # УДАЛЕНО: frontend-e2e-tests (заглушка)
+  # УДАЛЕНО: backend-integration-tests (заглушка)
 
   integration-tests:
-    needs: [backend-integration-tests]
+    needs: [unit-tests]  # ✅ ИСПРАВЛЕНО: напрямую от unit тестов
     runs-on: self-hosted
     steps:
       - name: Checkout
@@ -98,8 +80,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      # Remove cache action to avoid action download failures on self-hosted runner
 
       - name: Install test deps
         run: |
@@ -117,7 +97,6 @@ jobs:
           version: v0.24.0
           cluster_name: tourism-ci
 
-          
       - name: Build Docker images
         shell: bash
         run: |
@@ -140,6 +119,7 @@ jobs:
           docker build -t tourism-platform-tours-service:latest ./tours-service
           docker build -t tourism-platform-booking-service:latest ./booking-service
           docker build -t tourism-platform-frontend:latest ./frontend
+          docker build -t tourism-platform-gateway:latest ./gateway-service  # ✅ ДОБАВЛЕНО: gateway
 
       - name: Load images into kind
         run: |
@@ -147,6 +127,7 @@ jobs:
           kind load docker-image tourism-platform-tours-service:latest --name tourism-ci
           kind load docker-image tourism-platform-booking-service:latest --name tourism-ci
           kind load docker-image tourism-platform-frontend:latest --name tourism-ci
+          kind load docker-image tourism-platform-gateway:latest --name tourism-ci  # ✅ ДОБАВЛЕНО: gateway
 
       - name: Apply Kubernetes manifests
         run: |
@@ -155,6 +136,7 @@ jobs:
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/services-backend.yaml
+          kubectl apply -f k8s/gateway.yaml  # ✅ ДОБАВЛЕНО: gateway
           kubectl apply -f k8s/frontend.yaml
 
       - name: Wait for pods ready
@@ -162,6 +144,8 @@ jobs:
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/gateway  # ✅ ДОБАВЛЕНО: gateway
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/frontend
           kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
 
       - name: Port-forward services
@@ -172,109 +156,35 @@ jobs:
           echo $! > pf-tours.pid
           kubectl -n tourism port-forward deploy/booking-service 8002:8002 &
           echo $! > pf-booking.pid
-          sleep 5
+          kubectl -n tourism port-forward service/gateway 8080:8080 &  # ✅ ДОБАВЛЕНО: gateway
+          echo $! > pf-gateway.pid
+          sleep 10  # ✅ УВЕЛИЧЕНО: больше времени для запуска
 
       - name: Run integration tests
         env:
           AUTH_BASE_URL: http://localhost:8000
           TOURS_BASE_URL: http://localhost:8001
           BOOKING_BASE_URL: http://localhost:8002
-        run: pytest -q -n auto integration_test.py
+        run: |
+          pytest -q -n auto integration_test.py
+          pytest -q tests/integration/test_integration.py  # ✅ ДОБАВЛЕНО: реальные интеграционные тесты
 
       - name: Teardown port-forward
         if: always()
         run: |
-          kill $(cat pf-auth.pid) || true
-          kill $(cat pf-tours.pid) || true
-          kill $(cat pf-booking.pid) || true
+          kill $(cat pf-auth.pid 2>/dev/null) || true
+          kill $(cat pf-tours.pid 2>/dev/null) || true
+          kill $(cat pf-booking.pid 2>/dev/null) || true
+          kill $(cat pf-gateway.pid 2>/dev/null) || true
+          pkill -f "kubectl port-forward" || true  # ✅ ДОБАВЛЕНО: гарантированная очистка
 
-  backend-integration-tests:
-    needs: [unit-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run backend integration tests (placeholder)
-        run: pytest -q -n auto tests/backend_integration
-
-  e2e-tests:
-    needs: [integration-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run e2e tests (placeholder)
-        run: pytest -q -n auto tests/e2e
-
-  performance-tests:
-    needs: [e2e-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run performance tests (placeholder)
-        run: pytest -q -n auto tests/performance
-
-  mobile-tests:
-    needs: [performance-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run mobile tests (placeholder)
-        run: pytest -q -n auto tests/mobile
-
-  accessibility-tests:
-    needs: [mobile-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run accessibility tests (placeholder)
-        run: pytest -q -n auto tests/accessibility
+  # УДАЛЕНО: e2e-tests (заглушка)
+  # УДАЛЕНО: performance-tests (заглушка)
+  # УДАЛЕНО: mobile-tests (заглушка)
+  # УДАЛЕНО: accessibility-tests (заглушка)
 
   build-and-push:
-    needs: [accessibility-tests]
+    needs: [integration-tests]  # ✅ ИСПРАВЛЕНО: после реальных тестов
     runs-on: self-hosted
     steps:
       - name: Checkout repository
@@ -445,7 +355,6 @@ jobs:
             fi
           done
 
-
       - name: Deploy manifests and set images
         env:
           DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
@@ -454,6 +363,15 @@ jobs:
         run: |
           chmod +x k8s/deploy.sh
           ./k8s/deploy.sh
+
+      - name: Wait for deployment to be ready
+        run: |
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/auth-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/tours-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/booking-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/gateway
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/frontend
+          echo "✅ All deployments are ready!"
 
       - name: Display access information
         run: |
@@ -479,5 +397,3 @@ jobs:
           echo "   kubectl port-forward -n tourism service/frontend 8080:80 &"
           echo "   kubectl port-forward -n tourism service/gateway 8081:8080 &"
           echo ""
-
-
