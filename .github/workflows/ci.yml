@@ -169,6 +169,7 @@ jobs:
         run: |
           pytest -q -n auto integration_test.py
           pytest -q tests/integration/test_integration.py  # ✅ ДОБАВЛЕНО: реальные интеграционные тесты
+          pytest -q tests/backend_integration/test_services_communication.py  # ✅ ДОБАВЛЕНО: тесты коммуникации между сервисами
 
       - name: Teardown port-forward
         if: always()
