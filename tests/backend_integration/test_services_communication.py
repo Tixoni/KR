@@ -1,6 +1,6 @@
 import os
 import time
-import requests  # type: ignore[import-not-found]
+import requests  
 
 AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "http://localhost:8000").rstrip("/")
 
