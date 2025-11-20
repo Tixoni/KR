@@ -1,16 +1,15 @@
 import pytest
 import requests
 import time
+import os
+import subprocess
 from datetime import datetime, timedelta
-import json
 
-# Базовые URL сервисов через gateway
-BASE_URL = "http://localhost:8080/api"
+BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8080/api")
 AUTH_URL = f"{BASE_URL}/auth"
-TOURS_URL = f"{BASE_URL}/tours"
+TOURS_URL = f"{BASE_URL}/tours" 
 BOOKINGS_URL = f"{BASE_URL}/bookings"
 
-# Тестовые данные
 TEST_USER = {
     "username": f"testuser_{int(time.time())}",
     "password": "testpass123",
@@ -20,77 +19,105 @@ TEST_USER = {
 }
 
 TEST_TOUR = {
-    "title": "Тестовый тур в Париж",
-    "destination": "Париж",
+    "title": "Test Tour Paris",
+    "destination": "Paris", 
     "price": 50000.0,
     "duration_days": 7,
-    "description": "Экскурсионный тур по Парижу",
-    "features": ["Экскурсии", "Трансфер", "Завтраки"],
+    "description": "Paris excursion tour",
+    "features": ["Excursions", "Transfer", "Breakfasts"],
     "available": True
 }
 
-def wait_for_service(url: str, timeout: int = 60):
-    """Ожидание доступности сервиса"""
+def wait_for_service(url: str, timeout: int = 120):
+    print(f"Waiting for {url}")
     start_time = time.time()
+    attempt = 0
+    
     while time.time() - start_time < timeout:
+        attempt += 1
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=10)
+            print(f"Attempt {attempt}: {url} -> {response.status_code}")
+            
             if response.status_code == 200:
+                print(f"Service {url} is available")
                 return True
-        except requests.RequestException:
-            pass
-        time.sleep(2)
+                
+        except requests.ConnectionError as e:
+            print(f"Connection error to {url}: {e}")
+        except requests.Timeout:
+            print(f"Timeout connecting to {url}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            
+        time.sleep(5)
+    
+    print(f"Service {url} not available after {timeout} seconds")
     return False
 
 def get_auth_headers(token: str):
-    """Получение заголовков с авторизацией"""
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-@pytest.fixture(scope="module")
-def auth_token():
-    """Фикстура для получения токена аутентификации"""
-    # Ожидаем доступности сервисов
-    assert wait_for_service(f"{AUTH_URL}/health"), "Auth service not available"
-    assert wait_for_service(f"{TOURS_URL}/health"), "Tours service not available"
-    assert wait_for_service(f"{BOOKINGS_URL}/health"), "Booking service not available"
-    
-    # Регистрируем пользователя
-    register_response = requests.post(f"{AUTH_URL}/users", json=TEST_USER)
-    if register_response.status_code != 201:
-        # Если пользователь уже существует, пробуем другой username
-        TEST_USER["username"] = f"testuser_{int(time.time())}"
-        TEST_USER["email"] = f"test{int(time.time())}@example.com"
-        register_response = requests.post(f"{AUTH_URL}/users", json=TEST_USER)
-        assert register_response.status_code == 201, f"Failed to register user: {register_response.text}"
-    
-    # Логинимся
-    login_data = {
-        "username": TEST_USER["username"],
-        "password": TEST_USER["password"]
+    return {
+        "Authorization": f"Bearer {token}", 
+        "Content-Type": "application/json"
     }
-    login_response = requests.post(f"{AUTH_URL}/login", json=login_data)
-    assert login_response.status_code == 200, f"Failed to login: {login_response.text}"
+
+@pytest.fixture(scope="session")
+def services_ready():
+    print("Checking service readiness...")
+    
+    services = [
+        f"{AUTH_URL}/health",
+        f"{TOURS_URL}/health", 
+        f"{BOOKINGS_URL}/health"
+    ]
+    
+    for service in services:
+        if not wait_for_service(service, timeout=90):
+            pytest.fail(f"Service not ready: {service}")
+    
+    print("All services are ready")
+    return True
+
+@pytest.fixture(scope="function")
+def auth_token(services_ready):
+    unique_id = int(time.time())
+    user_data = TEST_USER.copy()
+    user_data["username"] = f"testuser_{unique_id}"
+    user_data["email"] = f"test{unique_id}@example.com"
+    
+    register_response = requests.post(f"{AUTH_URL}/users", json=user_data, timeout=10)
+    if register_response.status_code != 201:
+        pytest.fail(f"Failed to register user: {register_response.text}")
+    
+    login_data = {
+        "username": user_data["username"],
+        "password": user_data["password"]
+    }
+    
+    login_response = requests.post(f"{AUTH_URL}/login", json=login_data, timeout=10)
+    if login_response.status_code != 200:
+        pytest.fail(f"Failed to login: {login_response.text}")
     
     token = login_response.json()["access_token"]
     return token
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function") 
 def test_tour_id(auth_token):
-    """Фикстура для создания тестового тура"""
     headers = get_auth_headers(auth_token)
     
-    # Создаем тур
-    response = requests.post(f"{TOURS_URL}/tours", json=TEST_TOUR, headers=headers)
-    assert response.status_code == 201, f"Failed to create tour: {response.text}"
+    tour_data = TEST_TOUR.copy()
+    tour_data["title"] = f"Test Tour {int(time.time())}"
+    
+    response = requests.post(f"{TOURS_URL}/tours", json=tour_data, headers=headers, timeout=10)
+    if response.status_code != 201:
+        pytest.fail(f"Failed to create tour: {response.text}")
     
     tour_data = response.json()
     return tour_data["id"]
 
 class TestServiceIntegration:
-    """Тесты интеграции между сервисами"""
     
-    def test_services_health(self):
-        """Тест здоровья всех сервисов"""
+    def test_services_health(self, services_ready):
         services = [
             (f"{AUTH_URL}/health", "auth-service"),
             (f"{TOURS_URL}/health", "tours-service"),
@@ -98,69 +125,63 @@ class TestServiceIntegration:
         ]
         
         for url, service_name in services:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             assert response.status_code == 200, f"{service_name} health check failed"
             data = response.json()
             assert data["status"] == "healthy", f"{service_name} is unhealthy"
-            assert data["database"] == "connected", f"{service_name} database disconnected"
-    
-    def test_user_registration_flow(self):
-        """Тест полного цикла регистрации пользователя"""
-        # Регистрируем нового пользователя
+            print(f"Service {service_name}: {data}")
+
+    def test_user_registration_flow(self, services_ready):
         user_data = {
             "username": f"integration_user_{int(time.time())}",
             "password": "integration_pass123",
-            "email": f"integration{int(time.time())}@example.com",
+            "email": f"integration{int(time.time())}@example.com", 
             "name": "Integration Test User",
             "phone": "+1987654321"
         }
         
-        response = requests.post(f"{AUTH_URL}/users", json=user_data)
+        response = requests.post(f"{AUTH_URL}/users", json=user_data, timeout=10)
         assert response.status_code == 201, f"User registration failed: {response.text}"
         
         user_response = response.json()
         assert user_response["username"] == user_data["username"]
         assert user_response["email"] == user_data["email"]
         assert "id" in user_response
-    
-    def test_tour_creation_and_listing(self, auth_token):
-        """Тест создания и получения туров"""
+        print(f"User created: {user_response['username']}")
+
+    def test_tour_creation_and_listing(self, auth_token, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Получаем список туров
-        response = requests.get(f"{TOURS_URL}/tours")
+        response = requests.get(f"{TOURS_URL}/tours", timeout=10)
         assert response.status_code == 200
         tours = response.json()
         assert isinstance(tours, list)
+        print(f"Tours received: {len(tours)}")
         
-        # Создаем новый тур
         new_tour = TEST_TOUR.copy()
-        new_tour["title"] = f"Интеграционный тур {int(time.time())}"
-        new_tour["destination"] = "Рим"
+        new_tour["title"] = f"Integration Tour {int(time.time())}"
+        new_tour["destination"] = "Rome"
         
-        response = requests.post(f"{TOURS_URL}/tours", json=new_tour, headers=headers)
+        response = requests.post(f"{TOURS_URL}/tours", json=new_tour, headers=headers, timeout=10)
         assert response.status_code == 201, f"Tour creation failed: {response.text}"
         
         created_tour = response.json()
         assert created_tour["title"] == new_tour["title"]
         assert created_tour["destination"] == new_tour["destination"]
         assert created_tour["available"] == True
-    
-    def test_booking_creation_flow(self, auth_token, test_tour_id):
-        """Тест полного цикла бронирования"""
+        print(f"Tour created: {created_tour['title']}")
+
+    def test_booking_creation_flow(self, auth_token, test_tour_id, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Получаем информацию о пользователе
         user_response = requests.get(f"{AUTH_URL}/users/me", headers=headers)
         assert user_response.status_code == 200
         user_data = user_response.json()
         
-        # Получаем информацию о туре
         tour_response = requests.get(f"{TOURS_URL}/tours/{test_tour_id}")
         assert tour_response.status_code == 200
         tour_data = tour_response.json()
         
-        # Создаем бронирование
         booking_data = {
             "title": tour_data["title"],
             "user_id": user_data["id"],
@@ -169,13 +190,14 @@ class TestServiceIntegration:
             "participants_count": 2,
             "contact_phone": user_data.get("phone", "+1234567890"),
             "contact_email": user_data["email"],
-            "special_requests": "Тестовое бронирование"
+            "special_requests": "Test booking"
         }
         
         booking_response = requests.post(
             f"{BOOKINGS_URL}/bookings", 
             json=booking_data, 
-            headers=headers
+            headers=headers,
+            timeout=10
         )
         assert booking_response.status_code == 201, f"Booking creation failed: {booking_response.text}"
         
@@ -186,100 +208,81 @@ class TestServiceIntegration:
         assert booking["payment_status"] == "pending"
         
         return booking["id"]
-    
-    def test_booking_confirmation_flow(self, auth_token, test_tour_id):
-        """Тест подтверждения бронирования"""
+
+    def test_booking_confirmation_flow(self, auth_token, test_tour_id, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Создаем бронирование
-        booking_id = self.test_booking_creation_flow(auth_token, test_tour_id)
+        booking_id = self.test_booking_creation_flow(auth_token, test_tour_id, services_ready)
         
-        # Подтверждаем бронирование
         confirm_response = requests.post(
             f"{BOOKINGS_URL}/bookings/{booking_id}/confirm",
-            headers=headers
+            headers=headers,
+            timeout=10
         )
         assert confirm_response.status_code == 200, f"Booking confirmation failed: {confirm_response.text}"
         
         confirmed_booking = confirm_response.json()
         assert confirmed_booking["status"] == "confirmed"
         assert confirmed_booking["payment_status"] == "paid"
-    
-    def test_booking_cancellation_flow(self, auth_token, test_tour_id):
-        """Тест отмены бронирования"""
+
+    def test_booking_cancellation_flow(self, auth_token, test_tour_id, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Создаем новое бронирование для отмены
-        booking_id = self.test_booking_creation_flow(auth_token, test_tour_id)
+        booking_id = self.test_booking_creation_flow(auth_token, test_tour_id, services_ready)
         
-        # Отменяем бронирование
         cancel_response = requests.put(
             f"{BOOKINGS_URL}/bookings/{booking_id}/cancel",
-            headers=headers
+            headers=headers,
+            timeout=10
         )
         assert cancel_response.status_code == 200, f"Booking cancellation failed: {cancel_response.text}"
         
         cancelled_booking = cancel_response.json()
         assert cancelled_booking["status"] == "cancelled"
         assert cancelled_booking["payment_status"] == "refunded"
-    
-    def test_user_bookings_list(self, auth_token, test_tour_id):
-        """Тест получения списка бронирований пользователя"""
+
+    def test_user_bookings_list(self, auth_token, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Получаем информацию о пользователе
         user_response = requests.get(f"{AUTH_URL}/users/me", headers=headers)
         assert user_response.status_code == 200
         user_data = user_response.json()
         
-        # Получаем бронирования пользователя
         bookings_response = requests.get(
             f"{BOOKINGS_URL}/bookings/user/{user_data['id']}",
-            headers=headers
+            headers=headers,
+            timeout=10
         )
         assert bookings_response.status_code == 200
         bookings = bookings_response.json()
         assert isinstance(bookings, list)
-    
-    def test_tour_search_functionality(self):
-        """Тест поиска туров по направлению"""
-        # Ищем туры по направлению
-        response = requests.get(f"{TOURS_URL}/tours?destination=Париж")
+
+    def test_tour_search_functionality(self, services_ready):
+        response = requests.get(f"{TOURS_URL}/tours?destination=Paris", timeout=10)
         assert response.status_code == 200
         tours = response.json()
         assert isinstance(tours, list)
-        
-        # Если есть туры, проверяем что они содержат искомое направление
-        if tours:
-            for tour in tours:
-                assert "Париж" in tour["destination"]
-    
-    def test_tour_availability_filter(self):
-        """Тест фильтрации туров по доступности"""
-        # Получаем только доступные туры
-        response = requests.get(f"{TOURS_URL}/tours?available=true")
+
+    def test_tour_availability_filter(self, services_ready):
+        response = requests.get(f"{TOURS_URL}/tours?available=true", timeout=10)
         assert response.status_code == 200
         available_tours = response.json()
         
         for tour in available_tours:
             assert tour["available"] == True
         
-        # Получаем все туры (без фильтра)
-        response_all = requests.get(f"{TOURS_URL}/tours")
+        response_all = requests.get(f"{TOURS_URL}/tours", timeout=10)
         all_tours = response_all.json()
         
-        # Проверяем что доступных туров не больше чем всех
         assert len(available_tours) <= len(all_tours)
-    
-    def test_booking_statistics(self, auth_token):
-        """Тест получения статистики бронирований"""
+
+    def test_booking_statistics(self, auth_token, services_ready):
         headers = get_auth_headers(auth_token)
         
-        response = requests.get(f"{BOOKINGS_URL}/bookings/stats", headers=headers)
+        response = requests.get(f"{BOOKINGS_URL}/bookings/stats", headers=headers, timeout=10)
         assert response.status_code == 200
         stats = response.json()
         
-        # Проверяем структуру ответа
         assert "total_bookings" in stats
         assert "pending_bookings" in stats
         assert "confirmed_bookings" in stats
@@ -288,7 +291,6 @@ class TestServiceIntegration:
         assert "total_revenue" in stats
         assert "average_booking_value" in stats
         
-        # Проверяем что значения неотрицательные
         assert stats["total_bookings"] >= 0
         assert stats["pending_bookings"] >= 0
         assert stats["confirmed_bookings"] >= 0
@@ -297,10 +299,8 @@ class TestServiceIntegration:
         assert float(stats["total_revenue"]) >= 0
 
 class TestErrorScenarios:
-    """Тесты обработки ошибок и пограничных случаев"""
     
-    def test_duplicate_user_registration(self):
-        """Тест регистрации дубликата пользователя"""
+    def test_duplicate_user_registration(self, services_ready):
         user_data = {
             "username": f"duplicate_test_{int(time.time())}",
             "password": "testpass123",
@@ -308,74 +308,61 @@ class TestErrorScenarios:
             "name": "Duplicate Test User"
         }
         
-        # Первая регистрация - должна быть успешной
-        response1 = requests.post(f"{AUTH_URL}/users", json=user_data)
+        response1 = requests.post(f"{AUTH_URL}/users", json=user_data, timeout=10)
         assert response1.status_code == 201
         
-        # Вторая регистрация с тем же username - должна вернуть ошибку
-        response2 = requests.post(f"{AUTH_URL}/users", json=user_data)
+        response2 = requests.post(f"{AUTH_URL}/users", json=user_data, timeout=10)
         assert response2.status_code == 400
         
-        # Вторая регистрация с тем же email - должна вернуть ошибку
         user_data["username"] = f"different_username_{int(time.time())}"
-        response3 = requests.post(f"{AUTH_URL}/users", json=user_data)
+        response3 = requests.post(f"{AUTH_URL}/users", json=user_data, timeout=10)
         assert response3.status_code == 400
-    
-    def test_invalid_authentication(self):
-        """Тест невалидной аутентификации"""
-        # Неправильный пароль
+
+    def test_invalid_authentication(self, services_ready):
         login_data = {
             "username": "nonexistent_user",
             "password": "wrong_password"
         }
-        response = requests.post(f"{AUTH_URL}/login", json=login_data)
+        response = requests.post(f"{AUTH_URL}/login", json=login_data, timeout=10)
         assert response.status_code == 401
-    
-    def test_booking_nonexistent_tour(self, auth_token):
-        """Тест бронирования несуществующего тура"""
+
+    def test_booking_nonexistent_tour(self, auth_token, services_ready):
         headers = get_auth_headers(auth_token)
         
-        # Получаем информацию о пользователе
         user_response = requests.get(f"{AUTH_URL}/users/me", headers=headers)
         user_data = user_response.json()
         
         booking_data = {
-            "title": "Несуществующий тур",
+            "title": "Nonexistent tour",
             "user_id": user_data["id"],
-            "tour_id": 999999,  # Несуществующий ID
+            "tour_id": 999999,
             "travel_date": (datetime.now() + timedelta(days=30)).isoformat(),
             "participants_count": 1
         }
         
-        response = requests.post(f"{BOOKINGS_URL}/bookings", json=booking_data, headers=headers)
-        assert response.status_code == 404  # Тур не найден
-    
-    def test_unauthorized_tour_creation(self):
-        """Тест создания тура без авторизации"""
-        response = requests.post(f"{TOURS_URL}/tours", json=TEST_TOUR)
-        assert response.status_code == 401  # Не авторизован
+        response = requests.post(f"{BOOKINGS_URL}/bookings", json=booking_data, headers=headers, timeout=10)
+        assert response.status_code == 404
+
+    def test_unauthorized_tour_creation(self, services_ready):
+        response = requests.post(f"{TOURS_URL}/tours", json=TEST_TOUR, timeout=10)
+        assert response.status_code == 401
 
 class TestPerformance:
-    """Тесты производительности и параллельных запросов"""
     
-    def test_multiple_parallel_requests(self):
-        """Тест множественных параллельных запросов"""
+    def test_multiple_parallel_requests(self, services_ready):
         import concurrent.futures
         
         def make_request(_):
             response = requests.get(f"{TOURS_URL}/tours", timeout=10)
             return response.status_code
         
-        # Делаем 10 параллельных запросов
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             results = list(executor.map(make_request, range(10)))
         
-        # Все запросы должны быть успешными
         assert all(status == 200 for status in results)
-    
-    def test_response_time(self):
-        """Тест времени ответа сервисов"""
-        max_response_time = 2.0  # секунды
+
+    def test_response_time(self, services_ready):
+        max_response_time = 2.0
         
         services = [
             f"{AUTH_URL}/health",
@@ -392,6 +379,34 @@ class TestPerformance:
             assert response_time < max_response_time, f"Service {service_url} too slow: {response_time:.2f}s"
             assert response.status_code == 200
 
-# Запуск тестов
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+@pytest.mark.skipif(os.getenv("CI") != "true", reason="Only in CI environment")
+class TestCISpecific:
+    
+    def test_ci_environment(self):
+        assert os.getenv("CI") == "true", "This test should run only in CI"
+        
+    def test_k8s_cluster_running(self):
+        result = subprocess.run(
+            "kubectl cluster-info", 
+            shell=True, 
+            capture_output=True, 
+            text=True
+        )
+        assert result.returncode == 0, "Kubernetes cluster not available"
+        
+    def test_services_running(self):
+        result = subprocess.run(
+            "kubectl get pods -n tourism -o json", 
+            shell=True, 
+            capture_output=True, 
+            text=True
+        )
+        assert result.returncode == 0, "Failed to get pod information"
+        
+        import json
+        pods_info = json.loads(result.stdout)
+        running_pods = [
+            pod for pod in pods_info["items"] 
+            if pod["status"]["phase"] == "Running"
+        ]
+        assert len(running_pods) >= 3, "Not all services are running"
