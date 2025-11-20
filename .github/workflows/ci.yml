@@ -162,6 +162,7 @@ jobs:
 
       - name: Run integration tests
         env:
+          GATEWAY_BASE_URL: http://localhost:8080
           AUTH_BASE_URL: http://localhost:8000
           TOURS_BASE_URL: http://localhost:8001
           BOOKING_BASE_URL: http://localhost:8002

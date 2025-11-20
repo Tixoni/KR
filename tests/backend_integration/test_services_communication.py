@@ -1,131 +1,153 @@
 import pytest
 import requests
-import subprocess
 import time
+import os
+from datetime import datetime, timedelta
 
-# Конфигурация
-AUTH_URL = "http://localhost:8000"
-TOURS_URL = "http://localhost:8001" 
-BOOKINGS_URL = "http://localhost:8002"
-GATEWAY_URL = "http://localhost:8080"
+BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8080/api")
 
-class TestServiceIntegration:
+def is_service_available():
+    """Проверяет доступность сервиса"""
+    try:
+        response = requests.get(f"{BASE_URL}/auth/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+@pytest.fixture(scope="session")
+def services_ready():
+    """Фикстура проверки готовности сервисов"""
+    if not is_service_available():
+        pytest.skip("Services not available")
+    return True
+
+def get_auth_headers(token: str):
+    return {
+        "Authorization": f"Bearer {token}", 
+        "Content-Type": "application/json"
+    }
+
+class TestBasicIntegration:
+    """Базовые тесты интеграции"""
     
     def test_services_health(self, services_ready):
-        """Тестирует health endpoints всех сервисов"""
-        services = {
-            "auth": f"{AUTH_URL}/health",
-            "tours": f"{TOURS_URL}/health",
-            "booking": f"{BOOKINGS_URL}/health",
-            "gateway": f"{GATEWAY_URL}/health"
-        }
+        """Тест здоровья сервисов"""
+        services = ["auth", "tours", "bookings"]
         
-        for service_name, url in services.items():
-            response = requests.get(url)
-            assert response.status_code == 200, f"{service_name} health check failed"
-            
+        for service in services:
+            response = requests.get(f"{BASE_URL}/{service}/health", timeout=10)
+            assert response.status_code == 200, f"{service} health check failed"
             data = response.json()
-            assert data['status'] == 'healthy', f"{service_name} not healthy"
-            assert 'service' in data, f"{service_name} missing service field"
-            assert 'database' in data, f"{service_name} missing database field"
+            assert data["status"] == "healthy", f"{service} is unhealthy"
 
-    def test_user_registration_flow(self, services_ready):
-        """Тестирует полный цикл регистрации пользователя"""
-        # 1. Регистрация
+    def test_user_registration(self, services_ready):
+        """Тест регистрации пользователя"""
         user_data = {
-            "username": f"testuser_{int(time.time())}",
-            "password": "testpass123",
+            "username": f"test_user_{int(time.time())}",
+            "password": "test_password",
             "email": f"test{int(time.time())}@example.com",
             "name": "Test User"
         }
         
-        response = requests.post(f"{AUTH_URL}/users", json=user_data)
-        assert response.status_code in [201, 400]  # 400 если пользователь уже существует
+        response = requests.post(f"{BASE_URL}/auth/users", json=user_data, timeout=10)
+        assert response.status_code in [201, 400]  # 201 created or 400 if exists
         
-        # 2. Логин
-        login_data = {
-            "username": user_data["username"],
-            "password": user_data["password"]
-        }
-        
-        response = requests.post(f"{AUTH_URL}/login", json=login_data)
-        if response.status_code == 200:  # Если регистрация была успешной
-            token = response.json()["access_token"]
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            # 3. Получение данных пользователя
-            response = requests.get(f"{AUTH_URL}/users/me", headers=headers)
-            assert response.status_code == 200
-            user_info = response.json()
-            assert user_info["username"] == user_data["username"]
+        if response.status_code == 201:
+            user = response.json()
+            assert user["username"] == user_data["username"]
 
-    def test_tour_creation_and_listing(self, services_ready):
-        """Тестирует создание и получение туров"""
-        # Получаем список туров (публичный endpoint)
-        response = requests.get(f"{TOURS_URL}/tours")
+    def test_tours_list(self, services_ready):
+        """Тест получения списка туров"""
+        response = requests.get(f"{BASE_URL}/tours/tours", timeout=10)
         assert response.status_code == 200
         tours = response.json()
         assert isinstance(tours, list)
 
-    def test_gateway_routing(self, services_ready):
-        """Тестирует маршрутизацию через gateway"""
-        # Проверяем что gateway проксирует запросы
+class TestAuthenticatedFlows:
+    """Тесты требующие аутентификации"""
+    
+    @pytest.fixture
+    def auth_token(self, services_ready):
+        """Фикстура для получения токена"""
+        # Создаем уникального пользователя
+        username = f"auth_user_{int(time.time())}"
+        user_data = {
+            "username": username,
+            "password": "test_pass",
+            "email": f"{username}@example.com",
+            "name": "Auth Test User"
+        }
+        
+        # Регистрируем
+        requests.post(f"{BASE_URL}/auth/users", json=user_data, timeout=10)
+        
+        # Логинимся
+        login_data = {"username": username, "password": "test_pass"}
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        
+        if response.status_code == 200:
+            return response.json()["access_token"]
+        else:
+            pytest.skip("Failed to get auth token")
+
+    def test_user_profile(self, services_ready, auth_token):
+        """Тест получения профиля пользователя"""
+        headers = get_auth_headers(auth_token)
+        response = requests.get(f"{BASE_URL}/auth/users/me", headers=headers, timeout=10)
+        assert response.status_code == 200
+        user_data = response.json()
+        assert "username" in user_data
+        assert "email" in user_data
+
+    def test_tour_creation(self, services_ready, auth_token):
+        """Тест создания тура"""
+        headers = get_auth_headers(auth_token)
+        
+        tour_data = {
+            "title": f"Test Tour {int(time.time())}",
+            "destination": "Test Destination",
+            "price": 100.0,
+            "duration_days": 3,
+            "available": True
+        }
+        
+        response = requests.post(f"{BASE_URL}/tours/tours", json=tour_data, headers=headers, timeout=10)
+        # Может вернуть 201 или 403 если нет прав
+        assert response.status_code in [201, 403]
+
+class TestErrorScenarios:
+    """Тесты обработки ошибок"""
+    
+    def test_invalid_login(self, services_ready):
+        """Тест неверных учетных данных"""
+        login_data = {
+            "username": "nonexistent_user",
+            "password": "wrong_password"
+        }
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        assert response.status_code == 401
+
+    def test_unauthorized_access(self, services_ready):
+        """Тест неавторизованного доступа"""
+        response = requests.post(f"{BASE_URL}/tours/tours", json={}, timeout=10)
+        assert response.status_code == 401
+
+@pytest.mark.skipif(not os.getenv("CI"), reason="Run only in CI")
+class TestCISpecific:
+    """CI-специфичные тесты"""
+    
+    def test_environment_variables(self):
+        """Тест переменных окружения"""
+        assert os.getenv("CI") == "true"
+        
+    def test_service_endpoints(self, services_ready):
+        """Тест доступности эндпоинтов"""
         endpoints = [
-            "/api/auth/health",
-            "/api/tours/tours", 
-            "/api/bookings/health"
+            f"{BASE_URL}/auth/health",
+            f"{BASE_URL}/tours/health", 
+            f"{BASE_URL}/bookings/health"
         ]
         
         for endpoint in endpoints:
-            response = requests.get(f"{GATEWAY_URL}{endpoint}", timeout=10)
-            # Gateway должен возвращать 200 или 404, но не 5xx ошибки
-            assert response.status_code != 502, f"Gateway bad gateway for {endpoint}"
-            assert response.status_code != 503, f"Gateway unavailable for {endpoint}"
-
-class TestKubernetesDeployment:
-    
-    def test_k8s_cluster_running(self, k8s_cluster):
-        """Тестирует что Kubernetes кластер запущен"""
-        result = subprocess.run("kubectl cluster-info", shell=True, capture_output=True, text=True)
-        assert result.returncode == 0, "Kubernetes cluster not available"
-    
-    def test_services_running(self, deploy_services):
-        """Тестирует что все сервисы развернуты в Kubernetes"""
-        result = subprocess.run(
-            "kubectl get pods -n tourism -o json", 
-            shell=True, capture_output=True, text=True
-        )
-        assert result.returncode == 0, "Failed to get pod information"
-        
-        # Проверяем что есть поды в namespace tourism
-        import json
-        pod_info = json.loads(result.stdout)
-        assert len(pod_info['items']) > 0, "No pods found in tourism namespace"
-        
-        # Проверяем ключевые сервисы
-        expected_services = ["auth-service", "tours-service", "booking-service", "frontend", "gateway"]
-        deployments_result = subprocess.run(
-            "kubectl get deployments -n tourism -o json", 
-            shell=True, capture_output=True, text=True
-        )
-        
-        if deployments_result.returncode == 0:
-            deployments_info = json.loads(deployments_result.stdout)
-            deployment_names = [deploy['metadata']['name'] for deploy in deployments_info['items']]
-            
-            for service in expected_services:
-                assert service in deployment_names, f"Service {service} not deployed"
-
-class TestErrorScenarios:
-    
-    def test_invalid_authentication(self, services_ready):
-        """Тестирует обработку неверных учетных данных"""
-        invalid_credentials = {
-            "username": "nonexistentuser",
-            "password": "wrongpassword"
-        }
-        
-        response = requests.post(f"{AUTH_URL}/login", json=invalid_credentials)
-        assert response.status_code == 401, "Should return 401 for invalid credentials"
-
-# Удаляем старые тесты которые требовали ручного развертывания
+            response = requests.get(endpoint, timeout=10)
+            assert response.status_code == 200

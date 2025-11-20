@@ -1,8 +1,9 @@
+import os
 import time
 import requests
 
 
-BASE_URL = "http://localhost"
+BASE_URL = os.getenv("GATEWAY_BASE_URL", "http://localhost:8080").rstrip("/")
 GATEWAY_HEALTH = f"{BASE_URL}/health"
 AUTH_BASE = f"{BASE_URL}/api/auth"
 TOURS_BASE = f"{BASE_URL}/api/tours"
