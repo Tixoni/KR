@@ -67,7 +67,6 @@ jobs:
         run: pytest -q -n auto tests/frontend
 
 
-        
 
   integration-tests:
     needs: [unit-tests]  
