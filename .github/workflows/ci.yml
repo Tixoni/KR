@@ -66,11 +66,11 @@ jobs:
       - name: Run frontend unit tests
         run: pytest -q -n auto tests/frontend
 
-  # УДАЛЕНО: frontend-e2e-tests (заглушка)
-  # УДАЛЕНО: backend-integration-tests (заглушка)
+
+        
 
   integration-tests:
-    needs: [unit-tests]  # ✅ ИСПРАВЛЕНО: напрямую от unit тестов
+    needs: [unit-tests]  
     runs-on: self-hosted
     steps:
       - name: Checkout
