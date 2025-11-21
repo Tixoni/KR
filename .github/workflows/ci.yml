@@ -191,8 +191,6 @@ jobs:
           kill $(cat pf-gateway.pid 2>/dev/null) || true
           pkill -f "kubectl port-forward" || true  
 
-  
-
   build-and-push:
     needs: [integration-tests, frontend-unit-tests]  
     runs-on: self-hosted
