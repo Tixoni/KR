@@ -194,7 +194,7 @@ jobs:
   
 
   build-and-push:
-    needs: [integration-tests, comminucation-tests ]  
+    needs: [integration-tests, frontend-unit-tests]  
     runs-on: self-hosted
     steps:
       - name: Checkout repository
