@@ -49,23 +49,6 @@ jobs:
           PYTHONPATH: .
         run: pytest -q -n auto
 
-  comminucation-tests:
-    needs: [unit-tests]
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install test deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Run frontend unit tests
-        run: pytest -q -n auto tests/backend_integration
-
   frontend-unit-tests:
     needs: [unit-tests]
     runs-on: self-hosted
@@ -189,6 +172,15 @@ jobs:
           pytest -q tests/performance/test_api_response_times.py 
           pytest -q tests/accessibility/test_accessibility.py  
 
+      - name: Run communication tests
+        env:
+          AUTH_BASE_URL: http://localhost:8000
+          TOURS_BASE_URL: http://localhost:8001  
+          BOOKING_BASE_URL: http://localhost:8002
+          GATEWAY_BASE_URL: http://localhost:8080
+        run: |
+          pytest -v tests/backend_integration/test_services_communication.py
+
       - name: Teardown port-forward
         if: always()
         run: |
@@ -201,7 +193,7 @@ jobs:
   
 
   build-and-push:
-    needs: [integration-tests]  
+    needs: [integration-tests, comminucation-tests ]  
     runs-on: self-hosted
     steps:
       - name: Checkout repository
