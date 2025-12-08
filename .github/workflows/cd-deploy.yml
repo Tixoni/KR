@@ -1,31 +1,4 @@
-name: CI
-
-on:
-  push:
-  pull_request:
-
-jobs:
-  tests:
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: sqlite:///./ci_test.db
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-
-      - name: Run unit tests
-        run: |
-          pytest auth-service/test booking-service/test tours-service/test
+name: CD Deploy
 
 on:
   push:
@@ -76,7 +49,6 @@ jobs:
           PYTHONPATH: .
         run: pytest -q -n auto
 
-
   frontend-unit-tests:
     needs: [unit-tests]
     runs-on: self-hosted
@@ -95,7 +67,7 @@ jobs:
         run: pytest -q -n auto tests/frontend
 
   integration-tests:
-    needs: [unit-tests]  
+    needs: [unit-tests]
     runs-on: self-hosted
     steps:
       - name: Checkout
@@ -137,14 +109,13 @@ jobs:
             echo "Failed to pull $image after $tries attempts" >&2
             return 1
           }
-          # Warm base images to avoid TLS timeouts during build
           retry_pull python:3.11-slim
           retry_pull nginx:1.25-alpine || true
           docker build -t tourism-platform-auth-service:latest ./auth-service
           docker build -t tourism-platform-tours-service:latest ./tours-service
           docker build -t tourism-platform-booking-service:latest ./booking-service
           docker build -t tourism-platform-frontend:latest ./frontend
-          docker build -t tourism-platform-gateway:latest ./gateway-service  # ✅ ДОБАВЛЕНО: gateway
+          docker build -t tourism-platform-gateway:latest ./gateway-service
 
       - name: Load images into kind
         run: |
@@ -152,7 +123,7 @@ jobs:
           kind load docker-image tourism-platform-tours-service:latest --name tourism-ci
           kind load docker-image tourism-platform-booking-service:latest --name tourism-ci
           kind load docker-image tourism-platform-frontend:latest --name tourism-ci
-          kind load docker-image tourism-platform-gateway:latest --name tourism-ci  # ✅ ДОБАВЛЕНО: gateway
+          kind load docker-image tourism-platform-gateway:latest --name tourism-ci
 
       - name: Apply Kubernetes manifests
         run: |
@@ -161,7 +132,7 @@ jobs:
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/services-backend.yaml
-          kubectl apply -f k8s/gateway.yaml  # ✅ ДОБАВЛЕНО: gateway
+          kubectl apply -f k8s/gateway.yaml
           kubectl apply -f k8s/frontend.yaml
 
       - name: Wait for pods ready
@@ -169,7 +140,7 @@ jobs:
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
-          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/gateway  # ✅ ДОБАВЛЕНО: gateway
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/gateway
           kubectl -n tourism wait --for=condition=available --timeout=240s deploy/frontend
           kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
 
@@ -181,9 +152,9 @@ jobs:
           echo $! > pf-tours.pid
           kubectl -n tourism port-forward deploy/booking-service 8002:8002 &
           echo $! > pf-booking.pid
-          kubectl -n tourism port-forward service/gateway 8080:8080 &  # ✅ ДОБАВЛЕНО: gateway
+          kubectl -n tourism port-forward service/gateway 8080:8080 &
           echo $! > pf-gateway.pid
-          sleep 10  # ✅ УВЕЛИЧЕНО: больше времени для запуска
+          sleep 10
 
       - name: Run integration tests
         env:
@@ -193,17 +164,17 @@ jobs:
           BOOKING_BASE_URL: http://localhost:8002
         run: |
           pytest -q -n auto integration_test.py
-          pytest -q tests/integration/test_integration.py  
-          pytest -q tests/backend_integration/test_services_communication.py 
-          pytest -q tests/e2e/test_full_user_journey.py  
-          pytest -q tests/frontend_e2e/test_frontend_auth_flows.py   
-          pytest -q tests/performance/test_api_response_times.py 
-          pytest -q tests/accessibility/test_accessibility.py  
+          pytest -q tests/integration/test_integration.py
+          pytest -q tests/backend_integration/test_services_communication.py
+          pytest -q tests/e2e/test_full_user_journey.py
+          pytest -q tests/frontend_e2e/test_frontend_auth_flows.py
+          pytest -q tests/performance/test_api_response_times.py
+          pytest -q tests/accessibility/test_accessibility.py
 
       - name: Run communication tests
         env:
           AUTH_BASE_URL: http://localhost:8000
-          TOURS_BASE_URL: http://localhost:8001  
+          TOURS_BASE_URL: http://localhost:8001
           BOOKING_BASE_URL: http://localhost:8002
           GATEWAY_BASE_URL: http://localhost:8080
         run: |
@@ -216,10 +187,10 @@ jobs:
           kill $(cat pf-tours.pid 2>/dev/null) || true
           kill $(cat pf-booking.pid 2>/dev/null) || true
           kill $(cat pf-gateway.pid 2>/dev/null) || true
-          pkill -f "kubectl port-forward" || true  
+          pkill -f "kubectl port-forward" || true
 
   build-and-push:
-    needs: [integration-tests, frontend-unit-tests]  
+    needs: [integration-tests, frontend-unit-tests]
     runs-on: self-hosted
     steps:
       - name: Checkout repository
@@ -312,7 +283,6 @@ jobs:
       - name: Set image tag and docker user
         shell: bash
         run: |
-          # Prefer explicit secrets; fallback to current commit SHA for deterministic deploys
           if [[ -z "${{ secrets.IMAGE_TAG }}" ]]; then
             echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
           else
@@ -341,11 +311,8 @@ jobs:
       - name: Cleanup existing k3d cluster (if exists)
         shell: bash
         run: |
-          # Try to delete cluster, ignore errors if it doesn't exist
           k3d cluster delete tourism-cluster 2>/dev/null || true
-          # Wait a bit to ensure cleanup is complete
           sleep 3
-          # Verify cluster is gone
           if k3d cluster list 2>/dev/null | grep -q "tourism-cluster"; then
             echo "Warning: Cluster still exists, forcing deletion"
             k3d cluster delete tourism-cluster --all 2>/dev/null || true
@@ -355,8 +322,6 @@ jobs:
       - name: Create k3d cluster
         shell: bash
         run: |
-          # Create cluster with port mapping for loadbalancer access
-          # Maps host ports to loadbalancer for external access
           k3d cluster create tourism-cluster \
             --agents 1 \
             --api-port 6445 \
@@ -364,9 +329,8 @@ jobs:
             -p "8081:8080@loadbalancer" \
             --wait \
             --timeout 300s
-          echo "Cluster created successfully"
           k3d cluster list
-      
+
       - name: Verify cluster context
         run: |
           kubectl config use-context k3d-tourism-cluster
@@ -410,124 +374,41 @@ jobs:
           kubectl -n tourism wait --for=condition=available --timeout=300s deployment/booking-service
           kubectl -n tourism wait --for=condition=available --timeout=300s deployment/gateway
           kubectl -n tourism wait --for=condition=available --timeout=300s deployment/frontend
-          echo "✅ All deployments are ready!"
-          
+
       - name: Setup port forwarding for remote access
         shell: bash
         run: |
-          # Start port-forwarding in background for remote access
-          # This allows access to services even if runner is on remote machine
-          # Note: Port-forward only works if you have SSH access to the runner
           kubectl port-forward -n tourism service/frontend 8080:80 > /tmp/pf-frontend.log 2>&1 &
           echo $! > pf-frontend.pid
           kubectl port-forward -n tourism service/gateway 8081:8080 > /tmp/pf-gateway.log 2>&1 &
           echo $! > pf-gateway.pid
           sleep 3
-          echo "✅ Port forwarding started (PIDs: $(cat pf-frontend.pid), $(cat pf-gateway.pid))"
-          echo "⚠️  For remote access, use SSH tunnel: ssh -L 8080:localhost:8080 -L 8081:localhost:8081 user@runner-host"
-          
+          echo "Port forwarding started (PIDs: $(cat pf-frontend.pid), $(cat pf-gateway.pid))"
+          echo "For remote access, use SSH tunnel: ssh -L 8080:localhost:8080 -L 8081:localhost:8081 user@runner-host"
+
       - name: Verify service accessibility
         continue-on-error: true
         run: |
-          # Wait a bit for port-forward to be ready
           sleep 5
-          # Try to access services (will work if port-forward is active or loadbalancer is accessible)
-          echo "Checking service accessibility..."
           if curl -f -s http://localhost:8080/health > /dev/null 2>&1; then
-            echo "✅ Frontend accessible via localhost:8080"
+            echo "Frontend accessible via localhost:8080"
           else
-            echo "⚠️  Frontend not accessible via localhost:8080"
-            echo "   This is normal if runner is on remote machine. Use SSH tunnel."
+            echo "Frontend not accessible via localhost:8080"
           fi
           if curl -f -s http://localhost:8081/health > /dev/null 2>&1; then
-            echo "✅ Gateway accessible via localhost:8081"
+            echo "Gateway accessible via localhost:8081"
           else
-            echo "⚠️  Gateway not accessible via localhost:8081"
-            echo "   This is normal if runner is on remote machine. Use SSH tunnel."
-          fi
-          
-      - name: Setup port forwarding for remote access
-        shell: bash
-        run: |
-          # Start port-forwarding in background for remote access
-          # This allows access to services even if runner is on remote machine
-          # Note: Port-forward only works if you have SSH access to the runner
-          kubectl port-forward -n tourism service/frontend 8080:80 > /tmp/pf-frontend.log 2>&1 &
-          echo $! > pf-frontend.pid
-          kubectl port-forward -n tourism service/gateway 8081:8080 > /tmp/pf-gateway.log 2>&1 &
-          echo $! > pf-gateway.pid
-          sleep 3
-          echo "✅ Port forwarding started (PIDs: $(cat pf-frontend.pid), $(cat pf-gateway.pid))"
-          echo "⚠️  For remote access, use SSH tunnel: ssh -L 8080:localhost:8080 -L 8081:localhost:8081 user@runner-host"
-          
-      - name: Verify service accessibility
-        continue-on-error: true
-        run: |
-          # Wait a bit for port-forward to be ready
-          sleep 5
-          # Try to access services (will work if port-forward is active or loadbalancer is accessible)
-          echo "Checking service accessibility..."
-          if curl -f -s http://localhost:8080/health > /dev/null 2>&1; then
-            echo "✅ Frontend accessible via localhost:8080"
-          else
-            echo "⚠️  Frontend not accessible via localhost:8080"
-            echo "   This is normal if runner is on remote machine. Use SSH tunnel."
-          fi
-          if curl -f -s http://localhost:8081/health > /dev/null 2>&1; then
-            echo "✅ Gateway accessible via localhost:8081"
-          else
-            echo "⚠️  Gateway not accessible via localhost:8081"
-            echo "   This is normal if runner is on remote machine. Use SSH tunnel."
+            echo "Gateway not accessible via localhost:8081"
           fi
 
       - name: Display access information
         run: |
-          echo "=========================================="
-          echo " Deployment completed successfully!"
-          echo "=========================================="
-          echo ""
-          echo "⚠️  IMPORTANT: If runner is on remote/closed network, you need SSH tunnel!"
-          echo ""
-          echo "To access the services, use one of these methods:"
-          echo ""
-          echo " Method 1: SSH Tunnel (for remote/closed clusters)"
-          echo "   ssh -L 8080:localhost:8080 -L 8081:localhost:8081 user@runner-host"
-          echo "   Then access: http://localhost:8080 (frontend) and http://localhost:8081 (gateway)"
-          echo ""
-          echo " Method 2: Port-forward (if on same machine)"
-          echo "   kubectl port-forward -n tourism service/frontend 8080:80"
-          echo "   kubectl port-forward -n tourism service/gateway 8081:8080"
-          echo ""
-          echo " Method 3: Via LoadBalancer (if k3d port mapping configured)"
-          echo "   Frontend: http://localhost:8080 (via k3d loadbalancer)"
-          echo "   Gateway: http://localhost:8081 (via k3d loadbalancer)"
-          echo ""
-          echo " Method 4: Via Ingress (if Traefik is configured)"
-          echo "   1. Add to /etc/hosts: 127.0.0.1 tourism.local"
-          echo "   2. Open: http://tourism.local"
-          echo ""
-          echo " Method 5: Get service endpoints"
-          echo "   kubectl get svc -n tourism"
-          echo "   kubectl get ingress -n tourism"
-          echo ""
-          echo "Current port-forward status:"
-          if [ -f pf-frontend.pid ]; then
-            echo "   ✅ Frontend port-forward: PID $(cat pf-frontend.pid)"
-          else
-            echo "   ⚠️  Frontend port-forward: Not running"
-          fi
-          if [ -f pf-gateway.pid ]; then
-            echo "   ✅ Gateway port-forward: PID $(cat pf-gateway.pid)"
-          else
-            echo "   ⚠️  Gateway port-forward: Not running"
-          fi
-          echo ""
-          
-          
+          echo "Deployment completed successfully!"
+          echo "If runner is remote, use SSH tunnel to access forwarded ports."
+
       - name: Cleanup port forwarding
         if: always()
         run: |
-          # Cleanup port-forward processes
           if [ -f pf-frontend.pid ]; then
             kill $(cat pf-frontend.pid) 2>/dev/null || true
             rm -f pf-frontend.pid
@@ -537,4 +418,4 @@ jobs:
             rm -f pf-gateway.pid
           fi
           pkill -f "kubectl port-forward" || true
-          echo "✅ Port forwarding cleaned up"
+
