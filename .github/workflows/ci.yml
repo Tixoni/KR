@@ -1,11 +1,12 @@
-name: CI
+name: CI/CD
 
 on:
   push:
   pull_request:
 
 jobs:
-  tests:
+  # Fast unit tests on every push/PR
+  unit-tests:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: sqlite:///./ci_test.db
@@ -32,3 +33,412 @@ jobs:
         run: |
           echo "=== Running unit tests ==="
           pytest -v auth-service/test booking-service/test tours-service/test
+
+  # Integration tests and CD only on main/build branches
+  unit-tests-self-hosted:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build')
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, tours-service, booking-service]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Network check (GitHub access)
+        run: |
+          curl -I -sS https://github.com | head -n 1
+          curl -I -sS https://objects.githubusercontent.com | head -n 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Verify Python installation
+        run: |
+          python --version
+          which python || where python
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+
+      - name: Collect unit tests (${{ matrix.service }})
+        working-directory: ${{ matrix.service }}
+        env:
+          PYTHONPATH: .
+        run: pytest --collect-only -q
+
+      - name: Run unit tests (${{ matrix.service }})
+        working-directory: ${{ matrix.service }}
+        env:
+          PYTHONPATH: .
+        run: pytest -q -n auto
+
+  frontend-unit-tests:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build')
+    needs: [unit-tests-self-hosted]
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      - name: Run frontend unit tests
+        run: pytest -v tests/frontend
+
+  integration-tests:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build')
+    needs: [unit-tests-self-hosted]
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+
+      - name: Ensure buildx is available
+        run: |
+          docker buildx version || true
+          docker buildx create --use --name ci-builder 2>/dev/null || docker buildx use ci-builder
+
+      - name: Set up kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.24.0
+          cluster_name: tourism-ci
+
+      - name: Build Docker images
+        shell: bash
+        run: |
+          retry_pull() {
+            local image="$1"; local tries=5; local delay=10
+            for i in $(seq 1 "$tries"); do
+              echo "Pulling $image (attempt $i/$tries)"
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "Pull failed; sleeping $delay s" && sleep "$delay"
+            done
+            echo "Failed to pull $image after $tries attempts" >&2
+            return 1
+          }
+          retry_pull python:3.11-slim
+          retry_pull nginx:1.25-alpine || true
+          docker build -t tourism-platform-auth-service:latest ./auth-service
+          docker build -t tourism-platform-tours-service:latest ./tours-service
+          docker build -t tourism-platform-booking-service:latest ./booking-service
+          docker build -t tourism-platform-frontend:latest ./frontend
+          docker build -t tourism-platform-gateway:latest ./gateway-service
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image tourism-platform-auth-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-tours-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-booking-service:latest --name tourism-ci
+          kind load docker-image tourism-platform-frontend:latest --name tourism-ci
+          kind load docker-image tourism-platform-gateway:latest --name tourism-ci
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/postgres.yaml
+          kubectl apply -f k8s/services-backend.yaml
+          kubectl apply -f k8s/gateway.yaml
+          kubectl apply -f k8s/frontend.yaml
+
+      - name: Wait for pods ready
+        run: |
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/auth-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/tours-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/booking-service
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/gateway
+          kubectl -n tourism wait --for=condition=available --timeout=240s deploy/frontend
+          kubectl -n tourism wait --for=condition=ready pod -l app=postgres --timeout=240s
+
+      - name: Port-forward services
+        run: |
+          kubectl -n tourism port-forward deploy/auth-service 8000:8000 &
+          echo $! > pf-auth.pid
+          kubectl -n tourism port-forward deploy/tours-service 8001:8001 &
+          echo $! > pf-tours.pid
+          kubectl -n tourism port-forward deploy/booking-service 8002:8002 &
+          echo $! > pf-booking.pid
+          kubectl -n tourism port-forward service/gateway 8080:8080 &
+          echo $! > pf-gateway.pid
+          sleep 10
+
+      - name: Run integration tests
+        env:
+          GATEWAY_BASE_URL: http://localhost:8080
+          AUTH_BASE_URL: http://localhost:8000
+          TOURS_BASE_URL: http://localhost:8001
+          BOOKING_BASE_URL: http://localhost:8002
+        run: |
+          echo "=== Running integration tests ==="
+          pytest -v integration_test.py
+          pytest -v tests/integration/test_integration.py
+          pytest -v tests/backend_integration/test_services_communication.py
+          pytest -v tests/e2e/test_full_user_journey.py
+          pytest -v tests/frontend_e2e/test_frontend_auth_flows.py
+          pytest -v tests/performance/test_api_response_times.py
+          pytest -v tests/accessibility/test_accessibility.py
+
+      - name: Teardown port-forward
+        if: always()
+        run: |
+          kill $(cat pf-auth.pid 2>/dev/null) || true
+          kill $(cat pf-tours.pid 2>/dev/null) || true
+          kill $(cat pf-booking.pid 2>/dev/null) || true
+          kill $(cat pf-gateway.pid 2>/dev/null) || true
+          pkill -f "kubectl port-forward" || true
+
+  build-and-push:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build')
+    needs: [integration-tests, frontend-unit-tests]
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set repo lowercase (for logs only)
+        run: |
+          echo "REPO_NAME_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Set Docker user
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.DOCKER_USERNAME }}" ]]; then
+            echo "DOCKER_USERNAME is required as a secret" >&2
+            exit 1
+          fi
+          echo "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & push auth-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./auth-service
+          push: true
+          pull: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-auth-service:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-auth-service:latest
+
+      - name: Build & push booking-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./booking-service
+          push: true
+          pull: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-booking-service:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-booking-service:latest
+
+      - name: Build & push tours-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./tours-service
+          push: true
+          pull: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-tours-service:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-tours-service:latest
+
+      - name: Build & push gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway-service
+          push: true
+          pull: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-gateway:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-gateway:latest
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          pull: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-frontend:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/tourism-platform-frontend:latest
+
+  deploy:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build')
+    runs-on: self-hosted
+    needs: [build-and-push]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag and docker user
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.IMAGE_TAG }}" ]]; then
+            echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ secrets.IMAGE_TAG }}" >> $GITHUB_ENV
+          fi
+          if [[ -z "${{ secrets.DOCKER_USERNAME }}" ]]; then
+            echo "DOCKER_USERNAME is required as a secret" >&2
+            exit 1
+          fi
+          echo "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Install k3d
+        shell: bash
+        run: |
+          if ! command -v k3d &> /dev/null; then
+            curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          else
+            echo "k3d already installed: $(k3d version)"
+          fi
+
+      - name: Cleanup existing k3d cluster (if exists)
+        shell: bash
+        run: |
+          k3d cluster delete tourism-cluster 2>/dev/null || true
+          sleep 3
+          if k3d cluster list 2>/dev/null | grep -q "tourism-cluster"; then
+            echo "Warning: Cluster still exists, forcing deletion"
+            k3d cluster delete tourism-cluster --all 2>/dev/null || true
+            sleep 2
+          fi
+
+      - name: Create k3d cluster
+        shell: bash
+        run: |
+          k3d cluster create tourism-cluster \
+            --agents 1 \
+            --api-port 6445 \
+            -p "8080:80@loadbalancer" \
+            -p "8081:8080@loadbalancer" \
+            --wait \
+            --timeout 300s
+          k3d cluster list
+
+      - name: Verify cluster context
+        run: |
+          kubectl config use-context k3d-tourism-cluster
+          kubectl get nodes -o wide
+
+      - name: Verify Docker images exist in Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          images=(
+            "tourism-platform-auth-service"
+            "tourism-platform-booking-service"
+            "tourism-platform-tours-service"
+            "tourism-platform-gateway"
+            "tourism-platform-frontend"
+          )
+          for img in "${images[@]}"; do
+            echo "Checking $DOCKER_USERNAME/$img:$IMAGE_TAG ..."
+            if ! docker manifest inspect "$DOCKER_USERNAME/$img:$IMAGE_TAG" > /dev/null 2>&1; then
+              echo "Image not found: $DOCKER_USERNAME/$img:$IMAGE_TAG" >&2
+              exit 1
+            fi
+          done
+
+      - name: Deploy manifests and set images
+        env:
+          DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        shell: bash
+        run: |
+          chmod +x k8s/deploy.sh
+          ./k8s/deploy.sh
+
+      - name: Wait for deployment to be ready
+        run: |
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/auth-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/tours-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/booking-service
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/gateway
+          kubectl -n tourism wait --for=condition=available --timeout=300s deployment/frontend
+
+      - name: Setup port forwarding for remote access
+        shell: bash
+        run: |
+          kubectl port-forward -n tourism service/frontend 8080:80 > /tmp/pf-frontend.log 2>&1 &
+          echo $! > pf-frontend.pid
+          kubectl port-forward -n tourism service/gateway 8081:8080 > /tmp/pf-gateway.log 2>&1 &
+          echo $! > pf-gateway.pid
+          sleep 3
+          echo "Port forwarding started (PIDs: $(cat pf-frontend.pid), $(cat pf-gateway.pid))"
+
+      - name: Verify service accessibility
+        continue-on-error: true
+        run: |
+          sleep 5
+          if curl -f -s http://localhost:8080/health > /dev/null 2>&1; then
+            echo "Frontend accessible via localhost:8080"
+          else
+            echo "Frontend not accessible via localhost:8080"
+          fi
+          if curl -f -s http://localhost:8081/health > /dev/null 2>&1; then
+            echo "Gateway accessible via localhost:8081"
+          else
+            echo "Gateway not accessible via localhost:8081"
+          fi
+
+      - name: Display access information
+        run: |
+          echo "Deployment completed successfully!"
+
+      - name: Cleanup port forwarding
+        if: always()
+        run: |
+          if [ -f pf-frontend.pid ]; then
+            kill $(cat pf-frontend.pid) 2>/dev/null || true
+            rm -f pf-frontend.pid
+          fi
+          if [ -f pf-gateway.pid ]; then
+            kill $(cat pf-gateway.pid) 2>/dev/null || true
+            rm -f pf-gateway.pid
+          fi
+          pkill -f "kubectl port-forward" || true
