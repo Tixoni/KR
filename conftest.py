@@ -15,6 +15,8 @@ os.environ.setdefault("SKIP_TOURS_MIGRATE", "1")
 
 
 ROOT = Path(__file__).resolve().parent
+_AUTH_ENGINES = {}
+_BOOKING_ENGINES = {}
 _TOURS_ENGINES = {}
 
 
@@ -52,12 +54,20 @@ def _auth_service_overrides(request):
     from src.main import app  # type: ignore
     from src.database import get_db, Base  # type: ignore
 
-    engine = create_engine(
-        os.environ.get("DATABASE_URL", "sqlite:///./auth_test.db"),
-        connect_args={"check_same_thread": False},
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
+    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    db_path = ROOT / f".auth_test_{worker}.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+
+    if worker not in _AUTH_ENGINES:
+        engine = create_engine(
+            os.environ["DATABASE_URL"],
+            connect_args={"check_same_thread": False},
+        )
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+        _AUTH_ENGINES[worker] = (engine, TestingSessionLocal)
+    else:
+        _, TestingSessionLocal = _AUTH_ENGINES[worker]
 
     def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
         db = TestingSessionLocal()
@@ -87,12 +97,20 @@ def _booking_service_overrides(request):
     from src.main import app, get_current_user, security  # type: ignore
     from src.database import get_db, Base  # type: ignore
 
-    engine = create_engine(
-        os.environ.get("DATABASE_URL", "sqlite:///./booking_test.db"),
-        connect_args={"check_same_thread": False},
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
+    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    db_path = ROOT / f".booking_test_{worker}.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+
+    if worker not in _BOOKING_ENGINES:
+        engine = create_engine(
+            os.environ["DATABASE_URL"],
+            connect_args={"check_same_thread": False},
+        )
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+        _BOOKING_ENGINES[worker] = (engine, TestingSessionLocal)
+    else:
+        _, TestingSessionLocal = _BOOKING_ENGINES[worker]
 
     def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
         db = TestingSessionLocal()
