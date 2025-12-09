@@ -55,7 +55,23 @@ CREATE TABLE IF NOT EXISTS tours (
 -- booking_db (бронирования)
 \c booking_db;
 
--- Создаем ENUM типы для статусов
+-- Создаем ENUM типы для статусов (пересоздаем безопасно)
+DO $$
+BEGIN
+   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+      DROP TYPE booking_status;
+   END IF;
+END
+$$;
+
+DO $$
+BEGIN
+   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status') THEN
+      DROP TYPE payment_status;
+   END IF;
+END
+$$;
+
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'refunded');
 

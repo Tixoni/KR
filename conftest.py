@@ -40,6 +40,9 @@ def _in_service(request, name: str) -> bool:
 # ---------- Auth service ----------
 @pytest.fixture(autouse=True)
 def _auth_service_overrides(request):
+    if not _in_service(request, "auth-service"):
+        yield
+        return
 
     _ensure_path(ROOT / "auth-service")
     _clear_src_modules()
@@ -80,6 +83,9 @@ def _auth_service_overrides(request):
 # ---------- Booking service ----------
 @pytest.fixture(autouse=True)
 def _booking_service_overrides(request):
+    if not _in_service(request, "booking-service"):
+        yield
+        return
 
     _ensure_path(ROOT / "booking-service")
     _clear_src_modules()
@@ -128,6 +134,9 @@ def _booking_service_overrides(request):
 # ---------- Tours service ----------
 @pytest.fixture(autouse=True)
 def _tours_service_overrides(request):
+    if not _in_service(request, "tours-service"):
+        yield
+        return
 
     _ensure_path(ROOT / "tours-service")
     _clear_src_modules()
