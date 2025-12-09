@@ -13,7 +13,6 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 # Skip heavy migrations in tests
 os.environ.setdefault("SKIP_TOURS_MIGRATE", "1")
 
-
 ROOT = Path(__file__).resolve().parent
 _AUTH_ENGINES = {}
 _BOOKING_ENGINES = {}
@@ -62,7 +61,9 @@ def _setup_auth():
             connect_args={"check_same_thread": False},
         )
         TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        Base.metadata.create_all(bind=engine, checkfirst=True)
+        # FIX: Сначала удаляем таблицы, потом создаём
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
         _AUTH_ENGINES[worker] = (engine, TestingSessionLocal)
     else:
         _, TestingSessionLocal = _AUTH_ENGINES[worker]
@@ -72,10 +73,6 @@ def _setup_auth():
 
 @pytest.fixture(autouse=True)
 def _auth_service_overrides(request):
-    if not _in_service(request, "auth-service"):
-        yield
-        return
-
     setup = _setup_auth()
     if setup is None:
         yield
@@ -119,7 +116,9 @@ def _setup_booking():
             connect_args={"check_same_thread": False},
         )
         TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        Base.metadata.create_all(bind=engine, checkfirst=True)
+        # FIX: Сначала удаляем таблицы, потом создаём
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
         _BOOKING_ENGINES[worker] = (engine, TestingSessionLocal)
     else:
         _, TestingSessionLocal = _BOOKING_ENGINES[worker]
@@ -129,10 +128,6 @@ def _setup_booking():
 
 @pytest.fixture(autouse=True)
 def _booking_service_overrides(request):
-    if not _in_service(request, "booking-service"):
-        yield
-        return
-
     setup = _setup_booking()
     if setup is None:
         yield
@@ -147,8 +142,9 @@ def _booking_service_overrides(request):
         finally:
             db.close()
 
-    def _override_current_user() -> str:
-        return "test-user"
+    def _override_current_user() -> dict:
+        # Возвращаем словарь вместо строки для совместимости
+        return {"id": 1, "username": "test-user", "email": "test@example.com"}
 
     def _override_security():
         return SimpleNamespace(credentials="test-token")
@@ -165,23 +161,23 @@ def _booking_service_overrides(request):
 # ---------- Tours service fixtures ----------
 @pytest.fixture(autouse=True)
 def _tours_service_overrides(request):
-    if not _in_service(request, "tours-service"):
+    try:
+        service_root = ROOT / "tours-service"
+        _ensure_path(service_root)
+        _clear_src_modules()
+
+        # Use an isolated sqlite DB per worker with real models so queries succeed with empty data
+        worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+        db_path = ROOT / f".tours_test_{worker}.db"
+        os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+        _clear_src_modules()
+
+        from src.main import app  # type: ignore
+        from src.database import get_db, Base  # type: ignore
+        import src.models  # noqa: F401  # register models
+    except Exception:
         yield
         return
-
-    service_root = ROOT / "tours-service"
-    _ensure_path(service_root)
-    _clear_src_modules()
-
-    # Use an isolated sqlite DB per worker with real models so queries succeed with empty data
-    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
-    db_path = ROOT / f".tours_test_{worker}.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    _clear_src_modules()
-
-    from src.main import app  # type: ignore
-    from src.database import get_db, Base  # type: ignore
-    import src.models  # noqa: F401  # register models
 
     if worker not in _TOURS_ENGINES:
         engine = create_engine(
@@ -189,7 +185,9 @@ def _tours_service_overrides(request):
             connect_args={"check_same_thread": False},
         )
         TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        Base.metadata.create_all(bind=engine, checkfirst=True)
+        # FIX: Сначала удаляем таблицы, потом создаём
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
         _TOURS_ENGINES[worker] = (engine, TestingSessionLocal)
     else:
         engine, TestingSessionLocal = _TOURS_ENGINES[worker]
@@ -207,3 +205,19 @@ def _tours_service_overrides(request):
     finally:
         app.dependency_overrides.pop(get_db, None)
 
+
+# ---------- Cleanup after all tests ----------
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_dbs():
+    """Clean up test database files after all tests."""
+    yield
+    
+    # Удаляем все тестовые файлы БД
+    import glob
+    test_dbs = glob.glob(str(ROOT / ".*_test_*.db"))
+    for db_file in test_dbs:
+        try:
+            os.remove(db_file)
+            print(f"Cleaned up test DB: {db_file}")
+        except Exception as e:
+            print(f"Failed to clean up {db_file}: {e}")
