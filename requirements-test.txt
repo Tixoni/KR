@@ -1,0 +1,27 @@
+pytest==8.2.1
+pytest-asyncio==0.23.8
+requests==2.32.3
+httpx==0.27.2
+fastapi==0.111.0
+uvicorn==0.30.1
+sqlalchemy==2.0.40
+bcrypt==3.2.2
+
+# Explicit runtime deps to avoid import errors in CI
+pydantic==2.8.2
+starlette==0.37.2
+greenlet==3.0.3
+
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+pytest-xdist==3.3.1
+coverage==7.2.7
+pytest-html==3.2.0
+pytest-json-report==1.5.0
+
+# Добавьте эти зависимости для auth-service
+python-jose[cryptography]==3.3.0
+python-dotenv==1.0.0
+python-multipart==0.0.7
+email-validator==2.1.0
+psycopg2-binary==2.9.9

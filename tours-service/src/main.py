@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
-import os
 
 # Импорты для работы в контейнере
 from .models import Tour as TourModel  # Модель из models.py
@@ -34,9 +33,8 @@ def migrate_database():
     except Exception as e:
         print(f"⚠️ Ошибка миграции (возможно, таблица еще не создана): {e}")
 
-# Выполняем миграцию при старте (пропускаем в тестах и на sqlite)
-if engine.dialect.name != "sqlite" and os.getenv("SKIP_TOURS_MIGRATE") != "1":
-    migrate_database()
+# Выполняем миграцию при старте
+migrate_database()
 
 app = FastAPI(
     title="Tours Service",
