@@ -1,28 +1,8 @@
 -- infrastructure/init.sql
--- Создаем базы данных (если нет)
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'auth_db') THEN
-      CREATE DATABASE auth_db;
-   END IF;
-END
-$$;
-
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tours_db') THEN
-      CREATE DATABASE tours_db;
-   END IF;
-END
-$$;
-
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'booking_db') THEN
-      CREATE DATABASE booking_db;
-   END IF;
-END
-$$;
+-- Создаем базы данных
+CREATE DATABASE auth_db;
+CREATE DATABASE tours_db;
+CREATE DATABASE booking_db;
 
 -- auth_db (аутентификация + профили пользователей)
 \c auth_db;
@@ -46,8 +26,8 @@ CREATE TABLE IF NOT EXISTS tours (
     price DECIMAL(10,2) NOT NULL,
     duration_days INTEGER NOT NULL,
     available BOOLEAN DEFAULT true,
-    features JSONB,
-    images JSONB,  -- Массив URL фотографий
+    features TEXT[],
+    images TEXT[],  -- Массив URL фотографий
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -55,23 +35,7 @@ CREATE TABLE IF NOT EXISTS tours (
 -- booking_db (бронирования)
 \c booking_db;
 
--- Создаем ENUM типы для статусов (пересоздаем безопасно)
-DO $$
-BEGIN
-   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
-      DROP TYPE booking_status;
-   END IF;
-END
-$$;
-
-DO $$
-BEGIN
-   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status') THEN
-      DROP TYPE payment_status;
-   END IF;
-END
-$$;
-
+-- Создаем ENUM типы для статусов
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'refunded');
 
