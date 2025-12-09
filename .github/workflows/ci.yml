@@ -15,6 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${DOCKER_USERNAME}" ]; then
+            echo "DOCKER_USERNAME secret is required (used for image names like DOCKER_USERNAME/tourism-platform-*)" >&2
+            exit 1
+          fi
+
       - name: Set default image tag if empty
         run: |
           if [ -z "${IMAGE_TAG}" ]; then
