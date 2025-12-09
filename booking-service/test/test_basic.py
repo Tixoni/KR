@@ -27,7 +27,8 @@ def test_create_booking_calculates_total_price(monkeypatch):
     async def _fake_get_tour_price(tour_id: int) -> Decimal:
         return Decimal("150.50")
 
-    monkeypatch.setattr("src.main.validate_user_exists", _fake_validate_user)
+    # ИСПРАВЛЕНО: Правильный путь к модулю
+    monkeypatch.setattr("src.auth_utils.validate_user_exists", _fake_validate_user)
     monkeypatch.setattr("src.main.get_tour_price", _fake_get_tour_price)
 
     payload = {
@@ -52,4 +53,3 @@ def test_create_booking_calculates_total_price(monkeypatch):
     assert body["user_id"] == payload["user_id"]
     assert body["tour_id"] == payload["tour_id"]
     assert Decimal(str(body["total_price"])) == Decimal("301.00")
-
