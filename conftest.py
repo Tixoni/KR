@@ -24,6 +24,13 @@ def _ensure_path(path: Path):
         sys.path.insert(0, pstr)
 
 
+def _in_service(request, service_name: str) -> bool:
+    try:
+        return service_name in Path(request.fspath).resolve().parts
+    except Exception:
+        return service_name in str(request.fspath)
+
+
 def _clear_src_modules():
     # Drop cached modules so each service loads its own src package
     for name in list(sys.modules.keys()):
@@ -34,7 +41,7 @@ def _clear_src_modules():
 # ---------- Auth service fixtures ----------
 @pytest.fixture(autouse=True)
 def _auth_service_overrides(request):
-    if "auth-service" not in str(request.fspath):
+    if not _in_service(request, "auth-service"):
         yield
         return
 
@@ -69,7 +76,7 @@ def _auth_service_overrides(request):
 # ---------- Booking service fixtures ----------
 @pytest.fixture(autouse=True)
 def _booking_service_overrides(request):
-    if "booking-service" not in str(request.fspath):
+    if not _in_service(request, "booking-service"):
         yield
         return
 
@@ -112,7 +119,7 @@ def _booking_service_overrides(request):
 # ---------- Tours service fixtures ----------
 @pytest.fixture(autouse=True)
 def _tours_service_overrides(request):
-    if "tours-service" not in str(request.fspath):
+    if not _in_service(request, "tours-service"):
         yield
         return
 
