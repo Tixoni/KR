@@ -10,6 +10,8 @@ from sqlalchemy.orm import sessionmaker
 
 # Force tests to use local SQLite instead of Postgres by default
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+# Skip heavy migrations in tests
+os.environ.setdefault("SKIP_TOURS_MIGRATE", "1")
 
 
 ROOT = Path(__file__).resolve().parent
@@ -117,33 +119,28 @@ def _tours_service_overrides(request):
     _ensure_path(service_root)
     _clear_src_modules()
 
+    # Use an isolated sqlite DB with real models so queries succeed with empty data
+    os.environ["DATABASE_URL"] = "sqlite:///./tours_test.db"
+    _clear_src_modules()
+
     from src.main import app  # type: ignore
-    from src.database import get_db  # type: ignore
+    from src.database import get_db, Base  # type: ignore
 
-    class _FakeQuery:
-        def filter(self, *args, **kwargs):
-            return self
+    engine = create_engine(
+        os.environ["DATABASE_URL"],
+        connect_args={"check_same_thread": False},
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
 
-        def offset(self, *args, **kwargs):
-            return self
+    def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
 
-        def limit(self, *args, **kwargs):
-            return self
-
-        def all(self):
-            return []
-
-        def first(self):
-            return None
-
-    class _FakeSession:
-        def query(self, *args, **kwargs):
-            return _FakeQuery()
-
-    def _fake_get_db() -> _t.Iterator[_FakeSession]:
-        yield _FakeSession()
-
-    app.dependency_overrides[get_db] = _fake_get_db
+    app.dependency_overrides[get_db] = _test_get_db
     try:
         yield
     finally:
