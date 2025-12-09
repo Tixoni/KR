@@ -18,6 +18,13 @@ def _ensure_path(path: Path):
         sys.path.insert(0, pstr)
 
 
+def _clear_src_modules():
+    # Drop cached modules so each service loads its own src package
+    for name in list(sys.modules.keys()):
+        if name == "src" or name.startswith("src."):
+            sys.modules.pop(name, None)
+
+
 # ---------- Auth service fixtures ----------
 @pytest.fixture(autouse=True)
 def _auth_service_overrides(request):
@@ -27,6 +34,7 @@ def _auth_service_overrides(request):
 
     service_root = ROOT / "auth-service"
     _ensure_path(service_root)
+    _clear_src_modules()
 
     from src.main import app  # type: ignore
     from src.database import get_db, Base  # type: ignore
@@ -61,6 +69,7 @@ def _booking_service_overrides(request):
 
     service_root = ROOT / "booking-service"
     _ensure_path(service_root)
+    _clear_src_modules()
 
     from src.main import app, get_current_user, security  # type: ignore
     from src.database import get_db, Base  # type: ignore
@@ -103,6 +112,7 @@ def _tours_service_overrides(request):
 
     service_root = ROOT / "tours-service"
     _ensure_path(service_root)
+    _clear_src_modules()
 
     from src.main import app  # type: ignore
     from src.database import get_db  # type: ignore
