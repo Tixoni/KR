@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
+import os
 
 # Импорты для работы в контейнере
 from .models import Tour as TourModel  # Модель из models.py
