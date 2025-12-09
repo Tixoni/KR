@@ -3,61 +3,113 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: tourism-ci-postgres
+    container_name: postgres
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
-    volumes:
-      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      POSTGRES_DB: auth_db
     ports:
       - "5432:5432"
+    volumes:
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U admin -d auth_db"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
 
   auth-service:
-    build:
-      context: ./auth-service
-    container_name: tourism-ci-auth
+    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-auth-service:${IMAGE_TAG:-latest}
     environment:
       DATABASE_URL: postgresql://admin:password@postgres:5432/auth_db
-    depends_on:
-      postgres:
-        condition: service_healthy
+      SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
+      JWT_ALGORITHM: HS256
     ports:
       - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   tours-service:
-    build:
-      context: ./tours-service
-    container_name: tourism-ci-tours
+    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-tours-service:${IMAGE_TAG:-latest}
     environment:
-      DATABASE_URL: postgresql://admin:password@postgres:5432/tours_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
       POSTGRES_HOST: postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: tours_db
+      SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
+      JWT_ALGORITHM: HS256
     ports:
       - "8001:8001"
-
-  booking-service:
-    build:
-      context: ./booking-service
-    container_name: tourism-ci-booking
-    environment:
-      DATABASE_URL: postgresql://admin:password@postgres:5432/booking_db
-      TOURS_SERVICE_URL: http://tours-service:8001
-      AUTH_SERVICE_URL: http://auth-service:8000
     depends_on:
       postgres:
         condition: service_healthy
-      tours-service:
-        condition: service_started
-      auth-service:
-        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  booking-service:
+    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-booking-service:${IMAGE_TAG:-latest}
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/booking_db
+      SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
+      JWT_ALGORITHM: HS256
+      TOURS_SERVICE_URL: http://tours-service:8001
+      AUTH_SERVICE_URL: http://auth-service:8000
     ports:
       - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      tours-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  gateway:
+    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-gateway:${IMAGE_TAG:-latest}
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      tours-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "80:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+networks:
+  default:
+    name: tourism-platform
 
