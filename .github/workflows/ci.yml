@@ -24,6 +24,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-test.txt
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start microservices stack
+        run: |
+          docker compose -f docker-compose.tests.yml up -d --build
+
+      - name: Wait for microservices health
+        run: |
+          for port in 8000 8001 8002; do
+            echo "Waiting for service on port ${port}"
+            timeout 120 bash -c "until curl -fsS http://localhost:${port}/health > /dev/null 2>&1; do sleep 5; done"
+          done
+
       - name: Collect tests
         run: |
           echo "=== Collecting unit tests ==="
@@ -33,6 +47,11 @@ jobs:
         run: |
           echo "=== Running unit tests ==="
           pytest -v auth-service/test booking-service/test tours-service/test
+
+      - name: Tear down microservices stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.tests.yml down -v
 
   # Integration tests and CD only on main/build branches
   unit-tests-self-hosted:

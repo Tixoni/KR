@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tourism-ci-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: auth_db
+    volumes:
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build:
+      context: ./auth-service
+    container_name: tourism-ci-auth
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/auth_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  tours-service:
+    build:
+      context: ./tours-service
+    container_name: tourism-ci-tours
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/tours_db
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+
+  booking-service:
+    build:
+      context: ./booking-service
+    container_name: tourism-ci-booking
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/booking_db
+      TOURS_SERVICE_URL: http://tours-service:8001
+      AUTH_SERVICE_URL: http://auth-service:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tours-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8002:8002"
+
