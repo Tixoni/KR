@@ -15,11 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required secrets
+      - name: Set defaults for pull (public images)
         run: |
           if [ -z "${DOCKER_USERNAME}" ]; then
-            echo "DOCKER_USERNAME secret is required (used for image names like DOCKER_USERNAME/tourism-platform-*)" >&2
-            exit 1
+            echo "DOCKER_USERNAME not set, using public namespace 'tixongomzuak'"
+            echo "DOCKER_USERNAME=tixongomzuak" >> $GITHUB_ENV
+          else
+            echo "DOCKER_USERNAME=${DOCKER_USERNAME}" >> $GITHUB_ENV
           fi
 
       - name: Set default image tag if empty

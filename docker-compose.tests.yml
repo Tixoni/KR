@@ -17,7 +17,7 @@ services:
       retries: 12
 
   auth-service:
-    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-auth-service:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-auth-service:${IMAGE_TAG:-latest}
     environment:
       DATABASE_URL: postgresql://admin:password@postgres:5432/auth_db
       SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
@@ -34,7 +34,7 @@ services:
       retries: 12
 
   tours-service:
-    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-tours-service:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-tours-service:${IMAGE_TAG:-latest}
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
@@ -55,7 +55,7 @@ services:
       retries: 12
 
   booking-service:
-    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-booking-service:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-booking-service:${IMAGE_TAG:-latest}
     environment:
       DATABASE_URL: postgresql://admin:password@postgres:5432/booking_db
       SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
@@ -78,7 +78,7 @@ services:
       retries: 12
 
   gateway:
-    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-gateway:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-gateway:${IMAGE_TAG:-latest}
     ports:
       - "8080:8080"
     depends_on:
@@ -95,7 +95,7 @@ services:
       retries: 12
 
   frontend:
-    image: ${DOCKER_USERNAME:-youruser}/tourism-platform-frontend:${IMAGE_TAG:-latest}
+    image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-frontend:${IMAGE_TAG:-latest}
     ports:
       - "80:80"
     depends_on:
