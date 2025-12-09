@@ -120,6 +120,9 @@ def _tours_service_overrides(request):
         def all(self):
             return []
 
+    def first(self):
+        return None
+
     class _FakeSession:
         def query(self, *args, **kwargs):
             return _FakeQuery()
