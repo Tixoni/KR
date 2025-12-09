@@ -8,6 +8,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# Force tests to use local SQLite instead of Postgres by default
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -130,8 +133,8 @@ def _tours_service_overrides(request):
         def all(self):
             return []
 
-    def first(self):
-        return None
+        def first(self):
+            return None
 
     class _FakeSession:
         def query(self, *args, **kwargs):
