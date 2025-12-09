@@ -5,11 +5,9 @@ services:
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: auth_db
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
-    volumes:
-      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d auth_db"]
       interval: 10s
@@ -19,7 +17,7 @@ services:
   auth-service:
     image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-auth-service:${IMAGE_TAG:-latest}
     environment:
-      DATABASE_URL: postgresql://admin:password@postgres:5432/auth_db
+      DATABASE_URL: postgresql://admin:password@postgres:5432/postgres
       SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
       JWT_ALGORITHM: HS256
     ports:
@@ -40,7 +38,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: tours_db
+      POSTGRES_DB: postgres
       SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
       JWT_ALGORITHM: HS256
     ports:
@@ -57,7 +55,7 @@ services:
   booking-service:
     image: ${DOCKER_USERNAME:-tixongomzuak}/tourism-platform-booking-service:${IMAGE_TAG:-latest}
     environment:
-      DATABASE_URL: postgresql://admin:password@postgres:5432/booking_db
+      DATABASE_URL: postgresql://admin:password@postgres:5432/postgres
       SECRET_KEY: ${SECRET_KEY:-tourism-platform-secret-key-2024-production-ready}
       JWT_ALGORITHM: HS256
       TOURS_SERVICE_URL: http://tours-service:8001
