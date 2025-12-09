@@ -99,14 +99,14 @@ def test_tours_listing():
 
 def test_error_scenarios():
     """Минимальный E2E тест: проверка обработки ошибок."""
-    # Неверный логин
-    login_resp = requests.post(f"{AUTH_BASE}/login", json={"username": "nonexistent", "password": "wrong"}, timeout=10)
-    assert login_resp.status_code == 401
-    
-    # Несуществующий тур
     try:
+        # Неверный логин
+        login_resp = requests.post(f"{AUTH_BASE}/login", json={"username": "nonexistent", "password": "wrong"}, timeout=10)
+        assert login_resp.status_code == 401
+        
+        # Несуществующий тур
         tour_resp = requests.get(f"{TOURS_BASE}/tours/99999", timeout=10)
         assert tour_resp.status_code == 404
     except requests.RequestException:
-        pytest.skip("Tours service not available")
+        pytest.skip("Services not available")
 
