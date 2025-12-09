@@ -41,18 +41,16 @@ def _clear_src_modules():
 
 
 # ---------- Auth service fixtures ----------
-@pytest.fixture(autouse=True)
-def _auth_service_overrides(request):
-    if not _in_service(request, "auth-service"):
-        yield
-        return
-
-    service_root = ROOT / "auth-service"
-    _ensure_path(service_root)
-    _clear_src_modules()
-
-    from src.main import app  # type: ignore
-    from src.database import get_db, Base  # type: ignore
+def _setup_auth():
+    try:
+        service_root = ROOT / "auth-service"
+        _ensure_path(service_root)
+        _clear_src_modules()
+        from src.main import app  # type: ignore
+        from src.database import get_db, Base  # type: ignore
+        import src.models  # noqa: F401  # ensure models are registered
+    except Exception:
+        return None
 
     worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
     db_path = ROOT / f".auth_test_{worker}.db"
@@ -69,6 +67,22 @@ def _auth_service_overrides(request):
     else:
         _, TestingSessionLocal = _AUTH_ENGINES[worker]
 
+    return app, get_db, TestingSessionLocal
+
+
+@pytest.fixture(autouse=True)
+def _auth_service_overrides(request):
+    if not _in_service(request, "auth-service"):
+        yield
+        return
+
+    setup = _setup_auth()
+    if setup is None:
+        yield
+        return
+
+    app, get_db, TestingSessionLocal = setup
+
     def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
         db = TestingSessionLocal()
         try:
@@ -84,18 +98,16 @@ def _auth_service_overrides(request):
 
 
 # ---------- Booking service fixtures ----------
-@pytest.fixture(autouse=True)
-def _booking_service_overrides(request):
-    if not _in_service(request, "booking-service"):
-        yield
-        return
-
-    service_root = ROOT / "booking-service"
-    _ensure_path(service_root)
-    _clear_src_modules()
-
-    from src.main import app, get_current_user, security  # type: ignore
-    from src.database import get_db, Base  # type: ignore
+def _setup_booking():
+    try:
+        service_root = ROOT / "booking-service"
+        _ensure_path(service_root)
+        _clear_src_modules()
+        from src.main import app, get_current_user, security  # type: ignore
+        from src.database import get_db, Base  # type: ignore
+        import src.models  # noqa: F401  # register models
+    except Exception:
+        return None
 
     worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
     db_path = ROOT / f".booking_test_{worker}.db"
@@ -111,6 +123,22 @@ def _booking_service_overrides(request):
         _BOOKING_ENGINES[worker] = (engine, TestingSessionLocal)
     else:
         _, TestingSessionLocal = _BOOKING_ENGINES[worker]
+
+    return app, get_db, get_current_user, security, TestingSessionLocal
+
+
+@pytest.fixture(autouse=True)
+def _booking_service_overrides(request):
+    if not _in_service(request, "booking-service"):
+        yield
+        return
+
+    setup = _setup_booking()
+    if setup is None:
+        yield
+        return
+
+    app, get_db, get_current_user, security, TestingSessionLocal = setup
 
     def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
         db = TestingSessionLocal()
@@ -153,6 +181,7 @@ def _tours_service_overrides(request):
 
     from src.main import app  # type: ignore
     from src.database import get_db, Base  # type: ignore
+    import src.models  # noqa: F401  # register models
 
     if worker not in _TOURS_ENGINES:
         engine = create_engine(
