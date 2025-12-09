@@ -452,139 +452,163 @@ echo 📤 Push Docker Images to Docker Hub
 echo ====================================
 echo.
 
-REM Check if Docker Hub credentials are set (from environment or previous session)
-if "%DOCKER_USERNAME%"=="" (
-    echo Please provide your Docker Hub username:
-    echo (You can set DOCKER_USERNAME environment variable to skip this step)
-    set /p DOCKER_USERNAME="Docker Hub Username: "
-    if "!DOCKER_USERNAME!"=="" (
-        echo ❌ Username is required!
+REM 1. Сначала проверяем, какие образы есть локально
+echo 🔍 Checking for existing images...
+set IMAGES_EXIST=0
+docker images | findstr "tourism-platform" >nul && set IMAGES_EXIST=1
+
+if !IMAGES_EXIST!==0 (
+    echo ⚠️ No local tourism-platform images found!
+    echo.
+    echo Options:
+    echo 1. Pull existing images from Docker Hub (tixongomzuak)
+    echo 2. Exit and build images first
+    echo.
+    set /p OPTION="Choose [1-2]: "
+    
+    if "!OPTION!"=="1" (
+        echo.
+        echo 📥 Pulling images from Docker Hub...
+        
+        REM Попробуйте авторизоваться если нужно
+        echo !DOCKER_PASSWORD! | docker login -u "!DOCKER_USERNAME!" --password-stdin 2>nul
+        
+        docker pull tixongomzuak/tourism-platform-auth-service:latest && (
+            docker tag tixongomzuak/tourism-platform-auth-service:latest tourism-platform-auth-service:latest
+            echo ✅ Pulled auth-service
+        ) || echo ❌ Failed to pull auth-service
+        
+        docker pull tixongomzuak/tourism-platform-tours-service:latest && (
+            docker tag tixongomzuak/tourism-platform-tours-service:latest tourism-platform-tours-service:latest
+            echo ✅ Pulled tours-service
+        ) || echo ❌ Failed to pull tours-service
+        
+        docker pull tixongomzuak/tourism-platform-booking-service:latest && (
+            docker tag tixongomzuak/tourism-platform-booking-service:latest tourism-platform-booking-service:latest
+            echo ✅ Pulled booking-service
+        ) || echo ❌ Failed to pull booking-service
+        
+        docker pull tixongomzuak/tourism-platform-frontend:latest && (
+            docker tag tixongomzuak/tourism-platform-frontend:latest tourism-platform-frontend:latest
+            echo ✅ Pulled frontend
+        ) || echo ❌ Failed to pull frontend
+        
+        docker pull tixongomzuak/tourism-platform-gateway:latest && (
+            docker tag tixongomzuak/tourism-platform-gateway:latest tourism-platform-gateway:latest
+            echo ✅ Pulled gateway
+        ) || echo ❌ Failed to pull gateway
+        
+        echo.
+    ) else (
+        echo ❌ Please build images first (Option 7)
         pause
         goto MAIN_MENU
     )
-) else (
-    echo Using Docker Hub username: !DOCKER_USERNAME!
-    echo (Set DOCKER_USERNAME environment variable to change)
 )
 
-REM Ask for tag (default: latest)
+REM 2. Проверяем логин
+echo.
+echo 🔐 Checking Docker Hub login...
+docker info | findstr "Username" >nul
+if errorlevel 1 (
+    echo Not logged in to Docker Hub
+    call :DOCKER_LOGIN
+) else (
+    echo ✅ Already logged in to Docker Hub
+)
+
+REM 3. Ask for tag
+echo.
 set /p IMAGE_TAG="Image tag (default: latest): "
 if "!IMAGE_TAG!"=="" set IMAGE_TAG=latest
 
-echo.
-echo 🔐 Logging in to Docker Hub...
-if not "!DOCKER_PASSWORD!"=="" (
-    echo Using DOCKER_PASSWORD environment variable for authentication...
-    echo !DOCKER_PASSWORD! | docker login -u "!DOCKER_USERNAME!" --password-stdin
-) else (
-    echo Please enter your Docker Hub password (or access token):
-    echo (You can set DOCKER_PASSWORD environment variable to skip this step)
-    docker login -u "!DOCKER_USERNAME!"
-)
-if errorlevel 1 (
-    echo ❌ Failed to login to Docker Hub!
-    echo Please check your credentials.
-    pause
-    goto MAIN_MENU
-)
-
-echo.
-echo ✅ Successfully logged in to Docker Hub!
+REM 4. Push with detailed output
 echo.
 echo 📦 Pushing images with tag: !IMAGE_TAG!
-echo.
+echo =========================================
 
-REM Check if images exist before pushing
-echo Checking for local images...
-docker images | findstr "tourism-platform" >nul 2>&1
-if errorlevel 1 (
-    echo ⚠️ No local images found. Building images first...
-    call :BUILD_IMAGES_SILENT
-    echo.
-)
-
-REM Push auth-service
+push_images:
 echo 📤 Pushing auth-service...
-docker tag tourism-platform-auth-service:latest !DOCKER_USERNAME!/tourism-platform-auth-service:!IMAGE_TAG!
+docker tag tourism-platform-auth-service:latest !DOCKER_USERNAME!/tourism-platform-auth-service:!IMAGE_TAG! 2>nul
 docker push !DOCKER_USERNAME!/tourism-platform-auth-service:!IMAGE_TAG!
 if errorlevel 1 (
-    echo ❌ Failed to push auth-service!
+    echo ❌ Failed to push auth-service
+    echo ℹ️  Make sure:
+    echo    - You have write access to !DOCKER_USERNAME!/tourism-platform-auth-service
+    echo    - Image exists locally (run Option 7 first)
 ) else (
-    echo ✅ auth-service pushed successfully
-)
-if "!IMAGE_TAG!" NEQ "latest" (
-    docker tag tourism-platform-auth-service:latest !DOCKER_USERNAME!/tourism-platform-auth-service:latest
-    docker push !DOCKER_USERNAME!/tourism-platform-auth-service:latest
+    echo ✅ auth-service:!IMAGE_TAG! pushed
 )
 
-REM Push tours-service
 echo 📤 Pushing tours-service...
-docker tag tourism-platform-tours-service:latest !DOCKER_USERNAME!/tourism-platform-tours-service:!IMAGE_TAG!
+docker tag tourism-platform-tours-service:latest !DOCKER_USERNAME!/tourism-platform-tours-service:!IMAGE_TAG! 2>nul
 docker push !DOCKER_USERNAME!/tourism-platform-tours-service:!IMAGE_TAG!
 if errorlevel 1 (
-    echo ❌ Failed to push tours-service!
+    echo ❌ Failed to push tours-service
 ) else (
-    echo ✅ tours-service pushed successfully
-)
-if "!IMAGE_TAG!" NEQ "latest" (
-    docker tag tourism-platform-tours-service:latest !DOCKER_USERNAME!/tourism-platform-tours-service:latest
-    docker push !DOCKER_USERNAME!/tourism-platform-tours-service:latest
+    echo ✅ tours-service:!IMAGE_TAG! pushed
 )
 
-REM Push booking-service
 echo 📤 Pushing booking-service...
-docker tag tourism-platform-booking-service:latest !DOCKER_USERNAME!/tourism-platform-booking-service:!IMAGE_TAG!
+docker tag tourism-platform-booking-service:latest !DOCKER_USERNAME!/tourism-platform-booking-service:!IMAGE_TAG! 2>nul
 docker push !DOCKER_USERNAME!/tourism-platform-booking-service:!IMAGE_TAG!
 if errorlevel 1 (
-    echo ❌ Failed to push booking-service!
+    echo ❌ Failed to push booking-service
 ) else (
-    echo ✅ booking-service pushed successfully
-)
-if "!IMAGE_TAG!" NEQ "latest" (
-    docker tag tourism-platform-booking-service:latest !DOCKER_USERNAME!/tourism-platform-booking-service:latest
-    docker push !DOCKER_USERNAME!/tourism-platform-booking-service:latest
+    echo ✅ booking-service:!IMAGE_TAG! pushed
 )
 
-REM Push frontend
 echo 📤 Pushing frontend...
-docker tag tourism-platform-frontend:latest !DOCKER_USERNAME!/tourism-platform-frontend:!IMAGE_TAG!
+docker tag tourism-platform-frontend:latest !DOCKER_USERNAME!/tourism-platform-frontend:!IMAGE_TAG! 2>nul
 docker push !DOCKER_USERNAME!/tourism-platform-frontend:!IMAGE_TAG!
 if errorlevel 1 (
-    echo ❌ Failed to push frontend!
+    echo ❌ Failed to push frontend
 ) else (
-    echo ✅ frontend pushed successfully
-)
-if "!IMAGE_TAG!" NEQ "latest" (
-    docker tag tourism-platform-frontend:latest !DOCKER_USERNAME!/tourism-platform-frontend:latest
-    docker push !DOCKER_USERNAME!/tourism-platform-frontend:latest
+    echo ✅ frontend:!IMAGE_TAG! pushed
 )
 
-REM Push gateway
 echo 📤 Pushing gateway...
-docker tag tourism-platform-gateway:latest !DOCKER_USERNAME!/tourism-platform-gateway:!IMAGE_TAG!
+docker tag tourism-platform-gateway:latest !DOCKER_USERNAME!/tourism-platform-gateway:!IMAGE_TAG! 2>nul
 docker push !DOCKER_USERNAME!/tourism-platform-gateway:!IMAGE_TAG!
 if errorlevel 1 (
-    echo ❌ Failed to push gateway!
+    echo ❌ Failed to push gateway
 ) else (
-    echo ✅ gateway pushed successfully
-)
-if "!IMAGE_TAG!" NEQ "latest" (
-    docker tag tourism-platform-gateway:latest !DOCKER_USERNAME!/tourism-platform-gateway:latest
-    docker push !DOCKER_USERNAME!/tourism-platform-gateway:latest
+    echo ✅ gateway:!IMAGE_TAG! pushed
 )
 
 echo.
 echo ========================================
-echo ✅ Push to Docker Hub completed!
-echo ========================================
+echo ✅ Push completed!
 echo.
-echo Images pushed to: !DOCKER_USERNAME!/tourism-platform-*:!IMAGE_TAG!
-if "!IMAGE_TAG!" NEQ "latest" (
-    echo Also tagged as: !DOCKER_USERNAME!/tourism-platform-*:latest
-)
+echo Images available at:
+echo https://hub.docker.com/u/!DOCKER_USERNAME!
 echo.
 pause
 goto MAIN_MENU
+
+:DOCKER_LOGIN
+echo.
+echo Please login to Docker Hub:
+echo.
+echo Username: !DOCKER_USERNAME!
+if not "!DOCKER_PASSWORD!"=="" (
+    echo Using DOCKER_PASSWORD from environment
+    echo !DOCKER_PASSWORD! | docker login -u "!DOCKER_USERNAME!" --password-stdin
+) else (
+    docker login -u "!DOCKER_USERNAME!"
+)
+if errorlevel 1 (
+    echo ❌ Login failed!
+    echo.
+    echo ℹ️  Tips:
+    echo - Use Docker Hub Access Token instead of password
+    echo - Set DOCKER_USERNAME and DOCKER_PASSWORD environment variables
+    echo - Check internet connection
+    echo.
+    pause
+    goto MAIN_MENU
+)
+goto :eof
 
 :EXIT
 echo.

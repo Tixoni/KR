@@ -51,15 +51,31 @@ jobs:
             "tours-service:http://localhost:8001/health"
             "booking-service:http://localhost:8002/health"
             "gateway:http://localhost:8080/health"
-            "frontend:http://localhost/health"
+            "frontend:http://localhost/"
           )
           for entry in "${SERVICES[@]}"; do
             name="${entry%%:*}"
             url="${entry#*:}"
             echo "Waiting for $name at $url"
-            timeout 180 bash -c "until curl -fsS ${url} > /dev/null; do sleep 5; done"
-            echo "$name is healthy"
+            timeout 300 bash -c '
+              for i in {1..60}; do
+                if curl -fsS '"${url}"' > /dev/null 2>&1; then
+                  echo "'"${name}"' is healthy"
+                  exit 0
+                fi
+                echo "Attempt ${i}: '"${name}"' not ready yet..."
+                sleep 5
+              done
+              echo "Healthcheck failed after 300s for '"${name}"'"
+              exit 1
+            '
           done
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.tests.yml ps
+          docker compose -f docker-compose.tests.yml logs --tail=200
 
       - name: Show container status
         run: |
