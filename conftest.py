@@ -15,6 +15,7 @@ os.environ.setdefault("SKIP_TOURS_MIGRATE", "1")
 
 
 ROOT = Path(__file__).resolve().parent
+_TOURS_ENGINES = {}
 
 
 def _ensure_path(path: Path):
@@ -119,19 +120,25 @@ def _tours_service_overrides(request):
     _ensure_path(service_root)
     _clear_src_modules()
 
-    # Use an isolated sqlite DB with real models so queries succeed with empty data
-    os.environ["DATABASE_URL"] = "sqlite:///./tours_test.db"
+    # Use an isolated sqlite DB per worker with real models so queries succeed with empty data
+    worker = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    db_path = ROOT / f".tours_test_{worker}.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     _clear_src_modules()
 
     from src.main import app  # type: ignore
     from src.database import get_db, Base  # type: ignore
 
-    engine = create_engine(
-        os.environ["DATABASE_URL"],
-        connect_args={"check_same_thread": False},
-    )
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(bind=engine)
+    if worker not in _TOURS_ENGINES:
+        engine = create_engine(
+            os.environ["DATABASE_URL"],
+            connect_args={"check_same_thread": False},
+        )
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+        _TOURS_ENGINES[worker] = (engine, TestingSessionLocal)
+    else:
+        engine, TestingSessionLocal = _TOURS_ENGINES[worker]
 
     def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
         db = TestingSessionLocal()
