@@ -1,25 +1,23 @@
 import os
 import sys
+import typing as _t
 from types import SimpleNamespace
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import typing as _t
-import pytest
 
-TEST_DIR = os.path.dirname(__file__)
-SERVICE_ROOT = os.path.abspath(os.path.join(TEST_DIR, ".."))
 
-# Use isolated SQLite DB for tests
-os.environ.setdefault("DATABASE_URL", "sqlite:///./booking_test.db")
-
+SERVICE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "booking-service"))
 if SERVICE_ROOT not in sys.path:
     sys.path.insert(0, SERVICE_ROOT)
 
 from src.main import app, get_current_user, security  # noqa: E402
 from src.database import get_db, Base  # noqa: E402
 
+
 _engine = create_engine(
-    os.environ["DATABASE_URL"],
+    os.environ.get("DATABASE_URL", "sqlite:///./booking_test.db"),
     connect_args={"check_same_thread": False},
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
@@ -43,7 +41,12 @@ def _override_security():
 
 
 @pytest.fixture(autouse=True)
-def _override_dependencies():
+def booking_service_overrides(request):
+    # Apply only to tests located in booking-service/test
+    if "booking-service" not in str(request.fspath):
+        yield
+        return
+
     app.dependency_overrides[get_db] = _test_get_db
     app.dependency_overrides[get_current_user] = _override_current_user
     app.dependency_overrides[security] = _override_security
@@ -51,3 +54,5 @@ def _override_dependencies():
         yield
     finally:
         app.dependency_overrides.clear()
+
+

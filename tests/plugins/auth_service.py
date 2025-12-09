@@ -1,16 +1,13 @@
 import os
 import sys
+import typing as _t
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import typing as _t
-import pytest
 
-TEST_DIR = os.path.dirname(__file__)
-SERVICE_ROOT = os.path.abspath(os.path.join(TEST_DIR, ".."))
 
-# Use an isolated SQLite database for tests to avoid hitting Postgres
-os.environ.setdefault("DATABASE_URL", "sqlite:///./auth_test.db")
-
+SERVICE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "auth-service"))
 if SERVICE_ROOT not in sys.path:
     sys.path.insert(0, SERVICE_ROOT)
 
@@ -19,7 +16,7 @@ from src.database import get_db, Base  # noqa: E402
 
 
 _engine = create_engine(
-    os.environ["DATABASE_URL"],
+    os.environ.get("DATABASE_URL", "sqlite:///./auth_test.db"),
     connect_args={"check_same_thread": False},
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
@@ -35,9 +32,16 @@ def _test_get_db() -> _t.Iterator[TestingSessionLocal]:
 
 
 @pytest.fixture(autouse=True)
-def _override_db_dependency():
+def auth_service_overrides(request):
+    # Apply only to tests located in auth-service/test
+    if "auth-service" not in str(request.fspath):
+        yield
+        return
+
     app.dependency_overrides[get_db] = _test_get_db
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+

@@ -1,16 +1,14 @@
 import os
 import sys
+import typing as _t
+
+import pytest
 
 
-TEST_DIR = os.path.dirname(__file__)
-SERVICE_ROOT = os.path.abspath(os.path.join(TEST_DIR, ".."))
-
+SERVICE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tours-service"))
 if SERVICE_ROOT not in sys.path:
     sys.path.insert(0, SERVICE_ROOT)
 
-# Provide a DB override that doesn't hit a real database
-import typing as _t  # noqa: E402
-import pytest  # noqa: E402
 from src.main import app  # noqa: E402
 from src.database import get_db  # noqa: E402
 
@@ -39,7 +37,12 @@ def _fake_get_db() -> _t.Iterator[_FakeSession]:
 
 
 @pytest.fixture(autouse=True)
-def _override_db_dependency():
+def tours_service_overrides(request):
+    # Apply only to tests located in tours-service/test
+    if "tours-service" not in str(request.fspath):
+        yield
+        return
+
     app.dependency_overrides[get_db] = _fake_get_db
     try:
         yield
