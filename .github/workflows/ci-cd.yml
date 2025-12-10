@@ -348,7 +348,7 @@ jobs:
           username: ${{ env.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Verify Docker images exist in Docker Hub
+      - name: Verify Docker images exist in Docker Hub (with retry)
         env:
           DOCKER_USERNAME: ${{ env.DOCKER_USERNAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
@@ -362,12 +362,22 @@ jobs:
             "tourism-platform-gateway"
             "tourism-platform-frontend"
           )
+          max_attempts=5
+          delay=10
           for img in "${images[@]}"; do
             echo "Checking $DOCKER_USERNAME/$img:$IMAGE_TAG ..."
-            if ! docker manifest inspect "$DOCKER_USERNAME/$img:$IMAGE_TAG" > /dev/null 2>&1; then
-              echo "Image not found: $DOCKER_USERNAME/$img:$IMAGE_TAG" >&2
-              exit 1
-            fi
+            for attempt in $(seq 1 "$max_attempts"); do
+              if docker manifest inspect "$DOCKER_USERNAME/$img:$IMAGE_TAG" > /dev/null 2>&1; then
+                echo "Found $img:$IMAGE_TAG"
+                break
+              fi
+              if [ "$attempt" -eq "$max_attempts" ]; then
+                echo "Image not found after $max_attempts attempts: $DOCKER_USERNAME/$img:$IMAGE_TAG" >&2
+                exit 1
+              fi
+              echo "Not found yet (attempt $attempt/$max_attempts); retrying in ${delay}s"
+              sleep "$delay"
+            done
           done
 
       - name: Deploy manifests and set images
