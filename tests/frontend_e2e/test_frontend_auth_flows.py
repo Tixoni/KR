@@ -24,13 +24,12 @@ def wait_for_gateway_ready(timeout_seconds: int = 60) -> bool:
 
 
 def require_gateway_or_skip():
-    """Пропустить тест, если gateway недоступен."""
     if not wait_for_gateway_ready(timeout_seconds=30):
         pytest.skip(f"Gateway at {GATEWAY_HEALTH} not reachable")
 
 
 def test_frontend_page_accessible():
-    """Минимальный тест: frontend страница доступна."""
+    """frontend страница доступна."""
     require_gateway_or_skip()
     
     try:
@@ -42,7 +41,7 @@ def test_frontend_page_accessible():
 
 
 def test_user_registration_flow():
-    """Минимальный тест: регистрация пользователя через API."""
+    """регистрация пользователя через API."""
     require_gateway_or_skip()
     
     unique_suffix = int(time.time())
@@ -66,7 +65,7 @@ def test_user_registration_flow():
 
 
 def test_user_login_logout_flow():
-    """Минимальный тест: логин пользователя через API."""
+    """логин пользователя через API."""
     require_gateway_or_skip()
     
     unique_suffix = int(time.time())
@@ -106,7 +105,7 @@ def test_user_login_logout_flow():
 
 
 def test_invalid_login_handling():
-    """Минимальный тест: обработка неверных учетных данных."""
+    """обработка неверных учетных данных."""
     require_gateway_or_skip()
     
     try:

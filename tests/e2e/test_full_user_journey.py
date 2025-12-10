@@ -12,7 +12,6 @@ BOOKINGS_BASE = f"{BASE_URL}/api/bookings"
 
 
 def wait_for_gateway_ready(timeout_seconds: int = 60) -> bool:
-    """Return True if gateway becomes ready within timeout, else False."""
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
@@ -26,13 +25,12 @@ def wait_for_gateway_ready(timeout_seconds: int = 60) -> bool:
 
 
 def require_gateway_or_skip():
-    """Пропустить тест, если gateway недоступен."""
     if not wait_for_gateway_ready(timeout_seconds=30):
         pytest.skip(f"Gateway at {GATEWAY_HEALTH} not reachable")
 
 
 def test_complete_booking_flow():
-    """Минимальный E2E тест: регистрация -> логин -> просмотр туров -> бронирование."""
+    """E2E тест: регистрация -> логин -> просмотр туров -> бронирование."""
     require_gateway_or_skip()
     
     unique_suffix = int(time.time())
@@ -90,7 +88,7 @@ def test_complete_booking_flow():
 
 
 def test_user_registration_and_login():
-    """Минимальный E2E тест: регистрация и вход пользователя."""
+    """E2E тест: регистрация и вход пользователя."""
     require_gateway_or_skip()
     
     unique_suffix = int(time.time())
@@ -118,7 +116,7 @@ def test_user_registration_and_login():
 
 
 def test_tours_listing():
-    """Минимальный E2E тест: просмотр списка туров через gateway."""
+    """E2E тест: просмотр списка туров через gateway."""
     require_gateway_or_skip()
     
     try:
@@ -131,7 +129,7 @@ def test_tours_listing():
 
 
 def test_error_scenarios():
-    """Минимальный E2E тест: проверка обработки ошибок."""
+    """E2E тест: проверка обработки ошибок."""
     require_gateway_or_skip()
     
     try:
@@ -144,4 +142,3 @@ def test_error_scenarios():
         assert tour_resp.status_code == 404, f"Expected 404 for non-existent tour, got {tour_resp.status_code}"
     except requests.RequestException as e:
         pytest.skip(f"Services not available: {e}")
-

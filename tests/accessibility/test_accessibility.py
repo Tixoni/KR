@@ -23,13 +23,11 @@ def wait_for_gateway_ready(timeout_seconds: int = 60) -> bool:
 
 
 def require_gateway_or_skip():
-    """Пропустить тест, если gateway недоступен."""
     if not wait_for_gateway_ready(timeout_seconds=30):
         pytest.skip(f"Gateway at {GATEWAY_HEALTH} not reachable")
 
 
 def test_frontend_page_loads():
-    """Минимальный тест: главная страница загружается."""
     require_gateway_or_skip()
     
     try:
@@ -41,7 +39,6 @@ def test_frontend_page_loads():
 
 
 def test_html_structure_basic():
-    """Минимальный тест: проверка базовой структуры HTML."""
     require_gateway_or_skip()
     
     try:
@@ -57,7 +54,6 @@ def test_html_structure_basic():
 
 
 def test_css_loads():
-    """Минимальный тест: CSS файл доступен."""
     require_gateway_or_skip()
     
     try:

@@ -9,7 +9,7 @@ BOOKINGS_BASE_URL = os.getenv("BOOKINGS_BASE_URL", "http://localhost:8002").rstr
 
 
 def test_can_register_new_user():
-    """Минимальный интеграционный тест: создаём пользователя через auth-service."""
+    """создаём пользователя через auth-service."""
     unique_suffix = int(time.time())
     payload = {
         "username": f"backend_int_{unique_suffix}",
@@ -26,7 +26,7 @@ def test_can_register_new_user():
 
 
 def test_auth_service_health():
-    """Минимальный тест: проверка health endpoint auth-service."""
+    """проверка health endpoint auth-service."""
     try:
         response = requests.get(f"{AUTH_BASE_URL}/health", timeout=5)
         assert response.status_code == 200
@@ -37,7 +37,7 @@ def test_auth_service_health():
 
 
 def test_tours_service_health():
-    """Минимальный тест: проверка health endpoint tours-service."""
+    """проверка health endpoint tours-service."""
     try:
         response = requests.get(f"{TOURS_BASE_URL}/health", timeout=5)
         assert response.status_code == 200
@@ -48,7 +48,7 @@ def test_tours_service_health():
 
 
 def test_bookings_service_health():
-    """Минимальный тест: проверка health endpoint booking-service."""
+    """проверка health endpoint booking-service."""
     try:
         response = requests.get(f"{BOOKINGS_BASE_URL}/health", timeout=5)
         assert response.status_code == 200
@@ -59,7 +59,7 @@ def test_bookings_service_health():
 
 
 def test_tours_list_endpoint():
-    """Минимальный тест: получение списка туров."""
+    """получение списка туров."""
     try:
         response = requests.get(f"{TOURS_BASE_URL}/tours", timeout=5)
         assert response.status_code == 200

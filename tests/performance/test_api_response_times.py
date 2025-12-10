@@ -26,7 +26,6 @@ def wait_for_gateway_ready(timeout_seconds: int = 60) -> bool:
 
 
 def require_gateway_or_skip():
-    """Пропустить тест, если gateway недоступен."""
     if not wait_for_gateway_ready(timeout_seconds=30):
         pytest.skip(f"Gateway at {GATEWAY_HEALTH} not reachable")
 
@@ -48,7 +47,7 @@ def test_health_endpoint_response_time():
 
 
 def test_auth_health_response_time():
-    """Минимальный тест: auth health endpoint отвечает быстро."""
+    """auth health endpoint отвечает быстро."""
     require_gateway_or_skip()
     
     try:
@@ -64,7 +63,7 @@ def test_auth_health_response_time():
 
 
 def test_tours_list_response_time():
-    """Минимальный тест: список туров загружается за разумное время."""
+    """список туров загружается за разумное время."""
     require_gateway_or_skip()
     
     try:
